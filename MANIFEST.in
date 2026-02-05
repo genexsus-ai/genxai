@@ -1,0 +1,15 @@
+include README.md
+include LICENSE
+include ARCHITECTURE.md
+include REQUIREMENTS.md
+include GETTING_STARTED.md
+include CONTRIBUTING.md
+include IMPLEMENTATION_PLAN.md
+include TOOLS_DESIGN.md
+include pyproject.toml
+recursive-include genxai *.py
+recursive-include cli *.py
+recursive-include docs *.md
+recursive-include examples *.py
+global-exclude __pycache__
+global-exclude *.pyc

@@ -1,0 +1,31 @@
+workflow:
+  name: "Shared Memory Workflow"
+  description: "Example workflow with shared memory enabled"
+  memory:
+    shared: true
+  agents:
+    - id: "writer"
+      role: "Writer"
+      goal: "Draft a short response"
+      llm_model: "gpt-4"
+    - id: "reviewer"
+      role: "Reviewer"
+      goal: "Review and improve the response"
+      llm_model: "gpt-4"
+  graph:
+    nodes:
+      - id: "start"
+        type: "input"
+      - id: "writer"
+        type: "agent"
+      - id: "reviewer"
+        type: "agent"
+      - id: "end"
+        type: "output"
+    edges:
+      - from: "start"
+        to: "writer"
+      - from: "writer"
+        to: "reviewer"
+      - from: "reviewer"
+        to: "end"

@@ -1,0 +1,33 @@
+agents:
+  - id: "validator"
+    role: "Data Validator"
+    goal: "Validate incoming datasets for schema and integrity issues."
+    backstory: "Focused on ensuring data quality and compliance."
+    llm_provider: "openai"
+    llm_model: "gpt-4"
+    llm_temperature: 0.4
+    tools:
+      - "csv_processor"
+      - "data_validator"
+    memory:
+      enabled: false
+      type: "short_term"
+    behavior:
+      agent_type: "reactive"
+      max_iterations: 6
+
+  - id: "transformer"
+    role: "Data Transformer"
+    goal: "Normalize and enrich validated datasets for storage."
+    backstory: "Optimizes data formats for downstream systems."
+    llm_provider: "openai"
+    llm_model: "gpt-4"
+    llm_temperature: 0.5
+    tools:
+      - "data_transformer"
+    memory:
+      enabled: false
+      type: "short_term"
+    behavior:
+      agent_type: "deliberative"
+      max_iterations: 6

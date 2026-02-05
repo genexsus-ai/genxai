@@ -1,0 +1,31 @@
+workflow:
+  name: "User Proxy Workflow"
+  description: "Collects human input via tool step and routes to assistant agent"
+
+  agents:
+    - id: "assistant"
+      role: "Assistant"
+      llm: "gpt-4"
+      tools: ["text_analyzer"]
+
+  graph:
+    nodes:
+      - id: "start"
+        type: "input"
+      - id: "user_input"
+        type: "tool"
+        tool: "human_input"
+        tool_params:
+          prompt: "What do you need?"
+      - id: "assistant"
+        type: "agent"
+        agent: "assistant"
+      - id: "end"
+        type: "output"
+    edges:
+      - from: "start"
+        to: "user_input"
+      - from: "user_input"
+        to: "assistant"
+      - from: "assistant"
+        to: "end"

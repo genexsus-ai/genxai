@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "genxai-tools": {
+      "command": "python",
+      "args": ["-m", "genxai.tools.mcp_server"],
+      "env": {
+        "PYTHONPATH": "."
+      }
+    }
+  }
+}

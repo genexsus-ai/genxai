@@ -1,0 +1,32 @@
+agents:
+  - id: "summarizer"
+    role: "Content Summarizer"
+    goal: "Summarize long documents into concise briefs."
+    backstory: "Specialized in distilling key points across domains."
+    llm_provider: "openai"
+    llm_model: "gpt-4"
+    llm_temperature: 0.4
+    tools:
+      - "text_analyzer"
+    memory:
+      enabled: true
+      type: "short_term"
+    behavior:
+      agent_type: "reactive"
+      max_iterations: 5
+
+  - id: "qa_reviewer"
+    role: "Quality Assurance Reviewer"
+    goal: "Perform final QA checks before outputs are published."
+    backstory: "Ensures outputs meet quality, compliance, and tone standards."
+    llm_provider: "openai"
+    llm_model: "gpt-4"
+    llm_temperature: 0.2
+    tools:
+      - "text_analyzer"
+    memory:
+      enabled: true
+      type: "short_term"
+    behavior:
+      agent_type: "deliberative"
+      max_iterations: 6

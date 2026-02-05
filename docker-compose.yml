@@ -1,0 +1,112 @@
+version: '3.8'
+
+services:
+  genxai:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: genxai
+    ports:
+      - "8000:8000"
+    environment:
+      - GENXAI_ENV=development
+      - REDIS_URL=redis://redis:6379
+      - POSTGRES_URL=postgresql://genxai:genxai@postgres:5432/genxai
+    volumes:
+      - ./genxai:/app/genxai
+      - ./examples:/app/examples
+      - genxai_data:/app/data
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - genxai_network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: genxai_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - genxai_network
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: genxai_postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=genxai
+      - POSTGRES_PASSWORD=genxai
+      - POSTGRES_DB=genxai
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - genxai_network
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: genxai_prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./genxai/observability/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - genxai_network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: genxai_grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./genxai/observability/dashboards:/etc/grafana/provisioning/dashboards
+    depends_on:
+      - prometheus
+    networks:
+      - genxai_network
+    restart: unless-stopped
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: genxai_jaeger
+    ports:
+      - "5775:5775/udp"
+      - "6831:6831/udp"
+      - "6832:6832/udp"
+      - "5778:5778"
+      - "16686:16686"
+      - "14268:14268"
+      - "14250:14250"
+      - "9411:9411"
+    environment:
+      - COLLECTOR_ZIPKIN_HOST_PORT=:9411
+    networks:
+      - genxai_network
+    restart: unless-stopped
+
+volumes:
+  genxai_data:
+  redis_data:
+  postgres_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  genxai_network:
+    driver: bridge

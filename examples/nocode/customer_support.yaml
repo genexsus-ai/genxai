@@ -1,0 +1,36 @@
+workflow:
+  name: "Customer Support Workflow"
+  description: "Classify and resolve incoming support requests"
+
+  agents_ref: "examples/nocode/agents/support_agents.yaml"
+
+  agents:
+    - id: "classifier"
+      role: "Request Classifier"
+      llm: "gpt-4"
+      tools: ["text_analyzer"]
+    - id: "support"
+      role: "Support Agent"
+      llm: "gpt-4"
+      tools: ["email_sender", "web_scraper"]
+
+  graph:
+    nodes:
+      - id: "start"
+        type: "input"
+      - id: "classify"
+        type: "agent"
+        agent: "classifier"
+      - id: "support"
+        type: "agent"
+        agent: "support"
+      - id: "end"
+        type: "output"
+    edges:
+      - from: "start"
+        to: "classify"
+      - from: "classify"
+        to: "support"
+        condition: "category in ['technical', 'billing']"
+      - from: "support"
+        to: "end"

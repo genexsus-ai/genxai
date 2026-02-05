@@ -1,0 +1,43 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev]"
+        pip install pip-audit pip-licenses bandit
+
+    - name: Run pip-audit
+      run: |
+        pip-audit
+
+    - name: License check
+      run: |
+        pip-licenses --format=markdown --with-license-file --output-file=license-report.md
+
+    - name: Bandit security scan
+      run: |
+        bandit -r genxai -x tests
+
+    - name: Upload license report
+      uses: actions/upload-artifact@v3
+      with:
+        name: license-report
+        path: license-report.md

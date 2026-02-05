@@ -1,0 +1,44 @@
+workflow:
+  name: "Content Generation Pipeline"
+  description: "Draft, refine, and publish content assets"
+
+  agents_ref: "examples/nocode/agents/content_agents.yaml"
+
+  agents:
+    - id: "researcher"
+      role: "Research Agent"
+      llm: "gpt-4"
+      tools: ["web_scraper", "text_analyzer"]
+    - id: "writer"
+      role: "Content Writer"
+      llm: "gpt-4"
+      tools: ["text_analyzer"]
+    - id: "editor"
+      role: "Editor"
+      llm: "gpt-4"
+      tools: ["text_analyzer"]
+
+  graph:
+    nodes:
+      - id: "start"
+        type: "input"
+      - id: "research"
+        type: "agent"
+        agent: "researcher"
+      - id: "draft"
+        type: "agent"
+        agent: "writer"
+      - id: "edit"
+        type: "agent"
+        agent: "editor"
+      - id: "end"
+        type: "output"
+    edges:
+      - from: "start"
+        to: "research"
+      - from: "research"
+        to: "draft"
+      - from: "draft"
+        to: "edit"
+      - from: "edit"
+        to: "end"

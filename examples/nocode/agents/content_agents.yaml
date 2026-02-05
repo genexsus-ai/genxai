@@ -1,0 +1,49 @@
+agents:
+  - id: "researcher"
+    role: "Research Agent"
+    goal: "Gather and summarize relevant information for content creation."
+    backstory: "Experienced analyst focused on sourcing accurate references."
+    llm_provider: "openai"
+    llm_model: "gpt-4"
+    llm_temperature: 0.6
+    tools:
+      - "web_scraper"
+      - "text_analyzer"
+    memory:
+      enabled: true
+      type: "short_term"
+    behavior:
+      agent_type: "reactive"
+      max_iterations: 8
+
+  - id: "writer"
+    role: "Content Writer"
+    goal: "Draft clear, engaging content from research inputs."
+    backstory: "Seasoned writer with a focus on concise storytelling."
+    llm_provider: "openai"
+    llm_model: "gpt-4"
+    llm_temperature: 0.7
+    tools:
+      - "text_analyzer"
+    memory:
+      enabled: true
+      type: "short_term"
+    behavior:
+      agent_type: "deliberative"
+      max_iterations: 10
+
+  - id: "editor"
+    role: "Editor"
+    goal: "Refine drafts for clarity, accuracy, and tone alignment."
+    backstory: "Detail-oriented editor ensuring quality and consistency."
+    llm_provider: "openai"
+    llm_model: "gpt-4"
+    llm_temperature: 0.4
+    tools:
+      - "text_analyzer"
+    memory:
+      enabled: true
+      type: "short_term"
+    behavior:
+      agent_type: "deliberative"
+      max_iterations: 6

@@ -1,0 +1,36 @@
+workflow:
+  name: "Data Validation Pipeline"
+  description: "Ingest, validate, and store structured datasets"
+
+  agents_ref: "examples/nocode/agents/data_agents.yaml"
+
+  agents:
+    - id: "validator"
+      role: "Data Validator"
+      llm: "gpt-4"
+      tools: ["csv_processor", "data_validator"]
+    - id: "transformer"
+      role: "Data Transformer"
+      llm: "gpt-4"
+      tools: ["data_transformer"]
+
+  graph:
+    nodes:
+      - id: "start"
+        type: "input"
+      - id: "validate"
+        type: "agent"
+        agent: "validator"
+      - id: "transform"
+        type: "agent"
+        agent: "transformer"
+      - id: "end"
+        type: "output"
+    edges:
+      - from: "start"
+        to: "validate"
+      - from: "validate"
+        to: "transform"
+        condition: "validation_passed == true"
+      - from: "transform"
+        to: "end"
