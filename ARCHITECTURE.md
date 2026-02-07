@@ -48,39 +48,61 @@ Following Google's design philosophy:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    PRESENTATION LAYER                        │
-│  ┌──────────────────┐  ┌──────────────────┐                │
-│  │  No-Code Studio  │  │   CLI/SDK/API    │                │
-│  │  (Visual Editor) │  │  (Code Interface)│                │
-│  └──────────────────┘  └──────────────────┘                │
+│                    PRESENTATION LAYER                       │
+│  ┌──────────────────┐  ┌──────────────────┐                 │
+│  │  No-Code Studio  │  │   CLI/SDK/API    │                 │
+│  │  (Visual Editor) │  │  (Code Interface)│                 │
+│  └──────────────────┘  └──────────────────┘                 │
 └─────────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                   ORCHESTRATION LAYER                        │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
-│  │ Graph Engine │  │ Flow Control │  │ State Manager│     │
-│  └──────────────┘  └──────────────┘  └──────────────┘     │
+│                   ORCHESTRATION LAYER                       │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
+│  │ Graph Engine │  │ Flow Control │  │ State Manager│       │
+│  └──────────────┘  └──────────────┘  └──────────────┘       │
+│  ┌───────────────────────────────┐                          │
+│  │ Trigger Runner                │                          │
+│  │ (Webhook, Schedule, Events)   │                          │
+│  └───────────────────────────────┘                          │
 └─────────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                      AGENT LAYER                             │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
-│  │ Agent Runtime│  │ Memory System│  │ Tool Registry│     │
-│  └──────────────┘  └──────────────┘  └──────────────┘     │
+│                      AGENT LAYER                            │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐   │
+│  │ Agent Runtime│  │ Memory System│  │ Tool Registry    │   │
+│  └──────────────┘  └──────────────┘  │ + Tool Executor  │   │
+│                                      └──────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                   COMMUNICATION LAYER                        │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
-│  │ Message Bus  │  │ Event Stream │  │ Pub/Sub      │     │
-│  └──────────────┘  └──────────────┘  └──────────────┘     │
+│                   COMMUNICATION LAYER                       │
+│  ┌──────────────┐  ┌──────────────────┐  ┌──────────────┐   │
+│  │ Message Bus  │  │ Event Stream     │  │ Pub/Sub      │   │
+│  └──────────────┘  │ + Event Router   │  └──────────────┘   │
+│                    └──────────────────┘                     │
 └─────────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                   INFRASTRUCTURE LAYER                       │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
-│  │ LLM Providers│  │ Vector DBs   │  │ Observability│     │
-│  └──────────────┘  └──────────────┘  └──────────────┘     │
+│                   INFRASTRUCTURE LAYER                      │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
+│  │ LLM Providers│  │ Vector DBs   │  │ Observability│       │
+│  └──────────────┘  └──────────────┘  └──────────────┘       │
+│  ┌──────────────────────┐  ┌───────────────────────────┐    │
+│  │ Persistent Stores    │  │ Connectors / Integrations │    │
+│  │ (Postgres, Redis,…)  │  │ (Slack, Kafka, Jira, …)   │    │
+│  └──────────────────────┘  └───────────────────────────┘    │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│      CROSS-CUTTING (ALL LAYERS): SECURITY / GOVERNANCE      │
+│  ┌──────────────┐  ┌──────────────────┐  ┌──────────────┐   │
+│  │ RBAC         │  │ Policy Engine    │  │ Audit Logging│   │
+│  │              │  │ (ACL + approvals)│  │              │   │
+│  └──────────────┘  └──────────────────┘  └──────────────┘   │
+│  ┌──────────────────┐  ┌────────────────────────────────┐   │
+│  │ Guardrails       │  │ Secrets + Encryption (configs) │   │
+│  │ (PII, filters, …)│  │                                │   │
+│  └──────────────────┘  └────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -94,21 +116,38 @@ Following Google's design philosophy:
 - **Graph Engine**: Executes agent workflows as directed graphs
 - **Flow Control**: Manages execution flow, conditions, and loops
 - **State Manager**: Maintains workflow state across executions
+- **Trigger Runner**: Starts workflows from external events (webhooks, schedules, connector events)
 
 #### 3. Agent Layer
 - **Agent Runtime**: Executes individual agents
 - **Memory System**: Multi-layered memory (short-term, long-term, episodic, etc.)
-- **Tool Registry**: Manages available tools and capabilities
+- **Tool Registry + Tool Executor**: Manages available tools and executes tool calls safely
 
 #### 4. Communication Layer
 - **Message Bus**: Agent-to-agent communication
-- **Event Stream**: Event-driven notifications
+- **Event Stream + Event Router**: Event-driven notifications and routing between components
 - **Pub/Sub**: Broadcast messaging patterns
 
 #### 5. Infrastructure Layer
 - **LLM Providers**: Integration with OpenAI, Anthropic, Google, etc.
 - **Vector DBs**: Pinecone, Weaviate, Chroma for embeddings
-- **Observability**: Logging, metrics, tracing
+- **Observability**: Logging, metrics, tracing (instrumentation spans all layers)
+- **Persistent Stores**: PostgreSQL/Redis for metadata, caching, and state checkpoints
+- **Connectors / Integrations**: External system adapters (Slack, GitHub, Jira, Kafka, SQS, Postgres CDC, etc.)
+
+### Cross-Cutting Concerns (All Layers)
+
+- **Security / Governance**
+  - **RBAC** for coarse-grained permissions
+  - **Policy engine (resource-level ACLs)** for fine-grained control over tools, agents, memory, triggers, and connectors
+  - **Approvals** for policy-gated operations (human-in-the-loop authorization)
+  - **Audit logging** of policy decisions and sensitive actions
+  - **Guardrails** (input validation, output filtering, PII controls, rate limiting, cost controls)
+- **Secrets + Encryption**
+  - Secure secrets management
+  - Encryption in transit and (where applicable) at rest (e.g., encrypted connector configs)
+- **Observability**
+  - End-to-end logs, metrics, and traces across execution, orchestration, and integrations
 
 ---
 
