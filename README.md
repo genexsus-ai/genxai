@@ -8,9 +8,9 @@
 
 ## 🚀 Overview
 
-GenXAI is an advanced agentic AI framework designed to surpass existing solutions (CrewAI, AutoGen, BeeAI, n8n) by combining:
+GenXAI is an advanced agentic AI framework designed to surpass existing solutions by combining:
 
-- **Graph-Based Orchestration** (like LangGraph) for complex agent workflows
+- **Graph-Based Orchestration** complex agent workflows
 - **Advanced Memory Systems** with multiple memory types (short-term, long-term, episodic, semantic, procedural)
 - **No-Code Studio (Enterprise)** for visual workflow building
 - **50+ Built-in Tools** for web, database, file, computation, and communication tasks
@@ -420,10 +420,9 @@ MIT License
 ## 🔗 Links
 
 - **Documentation**: See docs/ directory
-- **GitHub**: (To be created)
+- **GitHub**: https://github.com/genexsus-ai/genxai
 - **Discord**: (To be created)
-- **Website**: (To be created)
-
+- **Website**: https://www.genxai.dev
 ---
 
 ## 📧 Contact
