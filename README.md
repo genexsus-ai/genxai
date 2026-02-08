@@ -2,7 +2,8 @@
 
 **Version:** 0.1.4  
 **Status:** Active Development  
-**License:** MIT
+**License:** MIT  
+**Creator:** Irsal Imran ([irsal2025@gmail.com](mailto:irsal2025@gmail.com))
 
 ---
 
