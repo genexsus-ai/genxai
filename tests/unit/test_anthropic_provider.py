@@ -5,6 +5,10 @@ from unittest.mock import patch, MagicMock, AsyncMock
 from genxai.llm.providers.anthropic import AnthropicProvider
 from genxai.llm.base import LLMResponse
 
+# These provider tests require the optional `anthropic` SDK.
+# Skip the entire module cleanly when it isn't installed (common in minimal/dev installs).
+pytest.importorskip("anthropic")
+
 
 @pytest.fixture
 def mock_anthropic_client():

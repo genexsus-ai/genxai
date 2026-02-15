@@ -7,7 +7,7 @@ open‑source **GenXAI core** and the commercial **enterprise** edition.
 
 - **Repo**: `genxai` (this repo)
 - **Package**: `genxai`
-- **Contents**: `genxai/`, `cli/`, `docs/`, `examples/`, `tests/`
+- **Contents**: `genxai/` (including `genxai/cli`), `docs/`, `examples/`, `tests/`
 - **Publishing**: PyPI (public)
 
 ### Checklist
@@ -15,6 +15,19 @@ open‑source **GenXAI core** and the commercial **enterprise** edition.
 1. Ensure no `enterprise/` files are packaged or referenced by build scripts
 2. Run unit tests + lint
 3. Build and publish `genxai` to PyPI
+
+## CLI extension mechanism (Option A)
+
+- OSS ships a single executable `genxai`.
+- Enterprise extends the same executable by registering entry points under
+  `genxai.cli_plugins`.
+
+In the enterprise package:
+
+```toml
+[project.entry-points."genxai.cli_plugins"]
+enterprise = "enterprise.cli.plugin:plugin_commands"
+```
 
 ## Enterprise Release Pipeline (Commercial)
 

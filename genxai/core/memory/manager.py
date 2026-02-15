@@ -2,6 +2,7 @@
 
 from typing import Any, Dict, List, Optional, Tuple
 import logging
+import asyncio
 
 from pathlib import Path
 from genxai.core.memory.base import Memory, MemoryType, MemoryConfig
@@ -541,3 +542,29 @@ class MemorySystem:
             enabled.append("procedural")
         
         return f"MemorySystem(agent_id={self.agent_id}, enabled={enabled})"
+
+    async def aclose(self) -> None:
+        """Close underlying vector store/embedding service if supported."""
+        if self.embedding_service and hasattr(self.embedding_service, "aclose"):
+            try:
+                await self.embedding_service.aclose()
+            except Exception as exc:
+                logger.warning("Failed to close embedding service: %s", exc)
+
+        if self.vector_store and hasattr(self.vector_store, "aclose"):
+            try:
+                await self.vector_store.aclose()
+            except Exception as exc:
+                logger.warning("Failed to close vector store: %s", exc)
+
+    def close(self) -> None:
+        """Synchronously close resources where possible."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            asyncio.run(self.aclose())
+            return
+
+        if loop.is_closed():
+            return
+        loop.create_task(self.aclose())

@@ -45,6 +45,12 @@ class AgentConfig(BaseModel):
     agent_type: AgentType = Field(default=AgentType.REACTIVE)
     max_iterations: int = Field(default=10, description="Max iterations for agent execution")
     verbose: bool = Field(default=False, description="Enable verbose logging")
+
+    # Ranking
+    enable_llm_ranking: bool = Field(
+        default=False,
+        description="Enable LLM-based ranking utility for downstream selection",
+    )
     
     # Guardrails
     max_execution_time: Optional[float] = Field(default=None, description="Max execution time in seconds")

@@ -1,7 +1,6 @@
 # LLM Integration Guide
 
-**Status:** ✅ Implemented  
-**Version:** 1.0.0  
+**Status:** ✅ Implemented
 **Last Updated:** January 30, 2026
 
 ---
@@ -466,6 +465,19 @@ agent = AgentFactory.create_agent(
     # Guardrails
     max_execution_time=30.0,  # seconds
 )
+```
+
+Config schema snippet (YAML):
+
+```yaml
+id: ranking_agent
+role: Analyst
+goal: Choose the best tool for the task
+llm_model: gpt-4
+enable_llm_ranking: true
+tools:
+  - web_search
+  - database_query
 ```
 
 ---

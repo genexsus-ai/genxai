@@ -28,12 +28,27 @@ class ToolRegistry:
         Args:
             tool: Tool to register
         """
-        if tool.metadata.name in cls._tools:
+        name = tool.metadata.name
+        existing = cls._tools.get(name)
+        if existing is not None:
+            # Avoid noisy warnings when the same tool class is registered multiple
+            # times due to import side-effects (common in CLIs).
+            if type(existing) is type(tool):
+                logger.debug(
+                    "Tool %s already registered (%s); skipping duplicate registration",
+                    name,
+                    type(tool).__name__,
+                )
+                return
             logger.warning(
-                f"Tool {tool.metadata.name} already registered, overwriting"
+                "Tool %s already registered (%s -> %s), overwriting",
+                name,
+                type(existing).__name__,
+                type(tool).__name__,
             )
-        cls._tools[tool.metadata.name] = tool
-        logger.info(f"Registered tool: {tool.metadata.name}")
+
+        cls._tools[name] = tool
+        logger.info("Registered tool: %s", name)
 
     @classmethod
     def unregister(cls, name: str) -> None:

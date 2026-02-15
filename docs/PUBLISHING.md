@@ -128,7 +128,10 @@ pip install genxai
 # Test the core install
 python -c "import genxai; print(genxai.__version__)"
 
-# CLI is enterprise-only and published separately
+# Verify the OSS CLI entry point is installed
+genxai --help
+genxai tool --help
+genxai workflow --help
 ```
 
 ## Automated Publishing with GitHub Actions

@@ -40,6 +40,7 @@ def agent_from_dict(data: Dict[str, Any]) -> Agent:
         llm_model=llm_model,
         llm_temperature=data.get("llm_temperature", 0.7),
         tools=data.get("tools", []),
+        enable_llm_ranking=data.get("enable_llm_ranking", False),
         enable_memory=data.get("memory", {}).get("enabled", True)
         if isinstance(data.get("memory"), dict)
         else data.get("enable_memory", True),

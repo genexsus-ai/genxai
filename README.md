@@ -1,17 +1,16 @@
 # GenXAI - Advanced Agentic AI Framework
 
-**Version:** 0.1.4  
+**Version:** 1.0.0  
 **Status:** Active Development  
-**License:** MIT  
+**License:** MIT
 # Irsal Imran - [irsal2025@gmail.com](mailto:irsal2025@gmail.com)
-
 ---
 
 ## 🚀 Overview
 
 GenXAI is an advanced agentic AI framework designed to surpass existing solutions by combining:
 
-- **Graph-Based Orchestration** complex agent workflows
+- **Graph-Based Orchestration** (like LangGraph) for complex agent workflows
 - **Advanced Memory Systems** with multiple memory types (short-term, long-term, episodic, semantic, procedural)
 - **No-Code Studio (Enterprise)** for visual workflow building
 - **50+ Built-in Tools** for web, database, file, computation, and communication tasks
@@ -21,6 +20,11 @@ GenXAI is an advanced agentic AI framework designed to surpass existing solution
 > enterprise Studio and related enterprise features have been moved to `enterprise/` as a staging
 > area for a separate commercial repo.
 
+## 🧩 Applications
+
+- **[AI Strategy Agent (P2P Brainstorming)](./applications/ai_strategy_agent/backend/README.md)**: peer-to-peer brainstorming workflow with layered architecture and local observability hooks.
+- **[Travel Planning Agent](./applications/travel_planning_agent/README.md)**: GenXAI-powered travel planning app with FastAPI backend, React frontend, and streaming itinerary updates.
+
 ## ✅ OSS vs Enterprise
 
 **Open-source (MIT) core** — use these for OSS releases:
@@ -28,7 +32,7 @@ GenXAI is an advanced agentic AI framework designed to surpass existing solution
 - `examples/`, `docs/`, `tests/`, `scripts/`
 
 **Enterprise (commercial) features** — keep in the enterprise repo:
-- `enterprise/` (Studio UI/backend, CLI, connectors, triggers, security, observability, metrics)
+- `enterprise/` (Studio UI/backend, enterprise CLI extensions, connectors, triggers, security, observability, metrics)
 
 ---
 
@@ -47,6 +51,9 @@ GenXAI is an advanced agentic AI framework designed to surpass existing solution
 - **Memory**: Multi-layered memory system
 - **Tools**: 50+ built-in tools + custom tool creation
 - **Personality**: Configurable agent personalities
+- **LLM Ranking (opt-in)**: Safe JSON-based ranking with heuristic fallbacks for tool selection ([docs/LLM_INTEGRATION.md](./docs/LLM_INTEGRATION.md))
+
+> **New in 0.1.6:** LLM ranking utility for tool selection with safe JSON parsing and heuristic fallbacks. See [LLM integration](./docs/LLM_INTEGRATION.md).
 
 ### 💾 Multi-Layered Memory
 - **Short-Term**: Recent conversation context
@@ -102,7 +109,6 @@ Comprehensive documentation is available in the following files:
 ---
 
 ## 🏗️ Architecture
-
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -164,11 +170,46 @@ Comprehensive documentation is available in the following files:
 └─────────────────────────────────────────────────────────────┘
 ```
 
+
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for complete details.
 
 ---
 
 ## 💡 Quick Start
+
+### CLI Quick Start (OSS)
+
+The OSS package ships a `genxai` CLI with `tool` and `workflow` commands.
+
+```bash
+# Verify the CLI entry point
+genxai --help
+
+# List available tools
+genxai tool list
+
+# Search and inspect tools
+genxai tool search weather
+genxai tool info weather_api
+
+# Run a YAML workflow
+genxai workflow run examples/nocode/content_generation.yaml \
+  --input '{"topic": "AI workflow design"}'
+
+# Create and export a tool
+genxai tool create \
+  --name my_tool \
+  --description "My custom tool" \
+  --category custom \
+  --template api_call \
+  --config '{"url": "https://api.example.com", "method": "GET"}'
+genxai tool export my_tool --output ./my_tool.json
+
+# Import a tool and export schema bundles
+genxai tool import-tool ./my_tool.json
+genxai tool export-schema --output tool_schemas.json
+genxai tool export-schema --format yaml --output tool_schemas.yaml
+```
 
 ### Using GenXAI as a Framework Library
 
@@ -293,8 +334,8 @@ await trigger.start()
 # Core install
 pip install genxai-framework
 
-# Full install with providers/tools (core)
-pip install "genxai-framework[llm,tools]"
+# Full install with providers/tools/API (core)
+pip install "genxai-framework[llm,tools,api]"
 
 # Everything included
 pip install "genxai-framework[all]"
@@ -424,6 +465,7 @@ MIT License
 - **GitHub**: https://github.com/genexsus-ai/genxai
 - **Discord**: (To be created)
 - **Website**: https://www.genxai.dev
+
 ---
 
 ## 📧 Contact

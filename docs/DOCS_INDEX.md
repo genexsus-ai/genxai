@@ -42,7 +42,7 @@ Complete guide to GenXAI framework documentation.
 
 | Document | Description |
 |----------|-------------|
-| [CLI_USAGE (Enterprise)](./CLI_USAGE.md) | CLI commands for tool, approval, audit, metrics |
+| [CLI_USAGE (OSS + Enterprise extensions)](./CLI_USAGE.md) | OSS CLI (`genxai tool/workflow`) + enterprise extensions |
 | [MCP_SETUP (Enterprise)](./MCP_SETUP.md) | Model Context Protocol server setup |
 
 ---
@@ -136,7 +136,7 @@ Complete guide to GenXAI framework documentation.
 4. [SECURITY_CHECKLIST (Enterprise)](./SECURITY_CHECKLIST.md)
 
 **CLI & Automation**
-1. [CLI_USAGE (Enterprise)](./CLI_USAGE.md)
+1. [CLI_USAGE (OSS + Enterprise extensions)](./CLI_USAGE.md)
 2. [MCP_SETUP (Enterprise)](./MCP_SETUP.md)
 
 **Performance & Monitoring**

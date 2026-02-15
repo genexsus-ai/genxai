@@ -325,6 +325,23 @@ class AnthropicProvider(LLMProvider):
             logger.error(f"Anthropic chat API call failed: {e}")
             raise
 
+    async def aclose(self) -> None:
+        """Close Anthropic client if initialized."""
+        if not self._client:
+            return
+
+        close_fn = getattr(self._client, "aclose", None)
+        if close_fn:
+            await close_fn()
+        else:
+            close_fn = getattr(self._client, "close", None)
+            if close_fn:
+                result = close_fn()
+                if hasattr(result, "__await__"):
+                    await result
+
+        self._client = None
+
     @classmethod
     def _normalize_model(cls, model: str) -> str:
         model_key = model.strip().lower()

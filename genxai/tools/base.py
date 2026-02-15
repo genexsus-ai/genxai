@@ -8,6 +8,16 @@ import time
 import logging
 
 from genxai.tools.security.policy import is_tool_allowed
+from genxai.utils.enterprise_compat import (
+    get_audit_log,
+    get_current_user,
+    get_policy_engine,
+    record_exception,
+    record_tool_execution,
+    span,
+    AuditEvent,
+    Permission,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -102,29 +112,41 @@ class Tool(ABC):
         status = "success"
         error_type: Optional[str] = None
         try:
-            allowed, reason = is_tool_allowed(self.metadata.name)
-            if not allowed:
-                status = "error"
-                error_type = "PolicyDenied"
-                return ToolResult(
-                    success=False,
-                    data=None,
-                    error=reason or "Tool execution denied by policy",
-                    execution_time=time.time() - start_time,
-                )
-            # Validate input
-            if not self.validate_input(**kwargs):
-                status = "error"
-                error_type = "ValidationError"
-                return ToolResult(
-                    success=False,
-                    data=None,
-                    error="Invalid input parameters",
-                    execution_time=time.time() - start_time,
-                )
+            with span("genxai.tool.execute", {"tool_name": self.metadata.name}):
+                user = get_current_user()
+                if user is not None:
+                    get_policy_engine().check(user, f"tool:{self.metadata.name}", Permission.TOOL_EXECUTE)
+                    get_audit_log().record(
+                        AuditEvent(
+                            action="tool.execute",
+                            actor_id=user.user_id,
+                            resource_id=f"tool:{self.metadata.name}",
+                            status="allowed",
+                        )
+                    )
+                allowed, reason = is_tool_allowed(self.metadata.name)
+                if not allowed:
+                    status = "error"
+                    error_type = "PolicyDenied"
+                    return ToolResult(
+                        success=False,
+                        data=None,
+                        error=reason or "Tool execution denied by policy",
+                        execution_time=time.time() - start_time,
+                    )
+                # Validate input
+                if not self.validate_input(**kwargs):
+                    status = "error"
+                    error_type = "ValidationError"
+                    return ToolResult(
+                        success=False,
+                        data=None,
+                        error="Invalid input parameters",
+                        execution_time=time.time() - start_time,
+                    )
 
-            # Execute tool logic
-            raw_result = await self._execute(**kwargs)
+                # Execute tool logic
+                raw_result = await self._execute(**kwargs)
 
             # Normalize results:
             # - If tool returns ToolResult, respect it.
@@ -150,6 +172,12 @@ class Tool(ABC):
                 if not raw_result.metadata:
                     raw_result.metadata = {"tool": self.metadata.name, "version": self.metadata.version}
                 raw_result.execution_time = execution_time
+                record_tool_execution(
+                    tool_name=self.metadata.name,
+                    duration=execution_time,
+                    status="success" if raw_result.success else "error",
+                    error_type=error_type,
+                )
                 return raw_result
 
             if isinstance(raw_result, dict) and "success" in raw_result and isinstance(raw_result["success"], bool):
@@ -171,6 +199,12 @@ class Tool(ABC):
                 logger.warning(
                     f"Tool {self.metadata.name} reported failure in {execution_time:.2f}s: {tool_error}"
                 )
+                record_tool_execution(
+                    tool_name=self.metadata.name,
+                    duration=execution_time,
+                    status="error",
+                    error_type=error_type,
+                )
                 return ToolResult(
                     success=False,
                     data=result_data,
@@ -182,6 +216,11 @@ class Tool(ABC):
             self._success_count += 1
             logger.info(
                 f"Tool {self.metadata.name} executed successfully in {execution_time:.2f}s"
+            )
+            record_tool_execution(
+                tool_name=self.metadata.name,
+                duration=execution_time,
+                status="success",
             )
             return ToolResult(
                 success=True,
@@ -199,6 +238,14 @@ class Tool(ABC):
             error_type = type(e).__name__
 
             logger.error(f"Tool {self.metadata.name} failed: {str(e)}")
+            record_exception(e)
+            record_tool_execution(
+                tool_name=self.metadata.name,
+                duration=execution_time,
+                status=status,
+                error_type=error_type,
+            )
+
             return ToolResult(
                 success=False, data=None, error=str(e), execution_time=execution_time
             )

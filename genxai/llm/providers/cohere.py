@@ -272,3 +272,16 @@ class CohereProvider(LLMProvider):
         except Exception as e:
             logger.error(f"Cohere chat API call failed: {e}")
             raise
+
+    async def aclose(self) -> None:
+        """Close Cohere client if initialized."""
+        if not self._client:
+            return
+
+        close_fn = getattr(self._client, "close", None)
+        if close_fn:
+            result = close_fn()
+            if hasattr(result, "__await__"):
+                await result
+
+        self._client = None

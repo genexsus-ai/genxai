@@ -28,6 +28,10 @@ class EmbeddingService(ABC):
         """Get embedding dimension."""
         pass
 
+    async def aclose(self) -> None:
+        """Close any underlying async client resources."""
+        return
+
 
 class OpenAIEmbeddingService(EmbeddingService):
     """OpenAI embedding service."""
@@ -109,6 +113,24 @@ class OpenAIEmbeddingService(EmbeddingService):
     def get_dimension(self) -> int:
         """Get embedding dimension."""
         return self._dimensions.get(self.model, 1536)
+
+    async def aclose(self) -> None:
+        """Close OpenAI client if initialized."""
+        if not self._client:
+            return
+
+        close_fn = getattr(self._client, "aclose", None)
+        if close_fn:
+            await close_fn()
+        else:
+            close_fn = getattr(self._client, "close", None)
+            if close_fn:
+                result = close_fn()
+                if hasattr(result, "__await__"):
+                    await result
+
+        self._client = None
+        self._initialized = False
 
 
 class LocalEmbeddingService(EmbeddingService):
@@ -272,6 +294,20 @@ class CohereEmbeddingService(EmbeddingService):
     def get_dimension(self) -> int:
         """Get embedding dimension."""
         return self._dimensions.get(self.model, 1024)
+
+    async def aclose(self) -> None:
+        """Close Cohere client if initialized."""
+        if not self._client:
+            return
+
+        close_fn = getattr(self._client, "close", None)
+        if close_fn:
+            result = close_fn()
+            if hasattr(result, "__await__"):
+                await result
+
+        self._client = None
+        self._initialized = False
 
 
 class EmbeddingServiceFactory:

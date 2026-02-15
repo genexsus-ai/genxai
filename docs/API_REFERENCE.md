@@ -145,6 +145,56 @@ provider = LLMProviderFactory.create_provider(
 - `list_providers() -> list[str]`
 - `create_routed_provider(primary_model, fallback_models=None, **kwargs)`
 
+### LLM Ranking Utility
+
+```python
+from genxai.utils.llm_ranking import RankCandidate, rank_candidates_with_llm
+
+decision = await rank_candidates_with_llm(
+    task="Pick best tool",
+    candidates=[
+        RankCandidate(id="a", content="Candidate A"),
+        RankCandidate(id="b", content="Candidate B"),
+    ],
+    llm_provider=provider,
+    criteria=["Highest relevance"],
+    weights={"overlap": 0.7, "keywords": 0.3},
+)
+```
+
+**Signature**
+
+```python
+async def rank_candidates_with_llm(
+    *,
+    task: str,
+    candidates: Iterable[RankCandidate],
+    llm_provider: LLMProvider,
+    system_prompt: str = DEFAULT_RANKING_SYSTEM_PROMPT,
+    criteria: Optional[Iterable[str]] = None,
+    weights: Optional[Mapping[str, float]] = None,
+) -> RankDecision
+```
+
+**Parameters**
+
+- `task`: Natural-language task to score against.
+- `candidates`: Iterable of `RankCandidate` (id, content, optional metadata).
+- `llm_provider`: Active provider used for the ranking request.
+- `system_prompt`: Override system instructions for the ranking model.
+- `criteria`: Optional evaluation criteria list.
+- `weights`: Optional heuristic weights used in fallback scoring.
+
+**Return**
+
+`RankDecision` contains:
+- `selected_id`: highest-ranked candidate id.
+- `ranked_ids`: ordered list of candidate ids.
+- `scores`: normalized scores per id.
+- `rationales`: rationale strings per id.
+- `confidence`: float in [0,1].
+- `method_used`: `llm`, `repaired_llm`, or `heuristic_fallback`.
+
 ---
 
 ## Memory System

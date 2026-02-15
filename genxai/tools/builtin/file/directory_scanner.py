@@ -205,6 +205,8 @@ class DirectoryScannerTool(Tool):
 
         except FileNotFoundError as e:
             result["error"] = str(e)
+        except PermissionError:
+            result["error"] = f"Permission denied: {path}"
         except Exception as e:
             result["error"] = str(e)
 

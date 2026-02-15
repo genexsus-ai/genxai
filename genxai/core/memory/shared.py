@@ -8,6 +8,8 @@ from typing import Any, Dict, List, Optional, Callable, Awaitable
 import asyncio
 import logging
 
+from genxai.utils.enterprise_compat import get_current_user, get_policy_engine, Permission
+
 logger = logging.getLogger(__name__)
 
 
@@ -28,12 +30,18 @@ class SharedMemoryBus:
         self._lock = asyncio.Lock()
 
     async def set(self, key: str, value: Any, metadata: Optional[Dict[str, Any]] = None) -> None:
+        user = get_current_user()
+        if user is not None:
+            get_policy_engine().check(user, f"memory:{key}", Permission.MEMORY_WRITE)
         async with self._lock:
             entry = SharedMemoryEntry(key=key, value=value, metadata=metadata or {})
             self._store[key] = entry
             await self._notify(key, entry)
 
     def get(self, key: str, default: Any = None) -> Any:
+        user = get_current_user()
+        if user is not None:
+            get_policy_engine().check(user, f"memory:{key}", Permission.MEMORY_READ)
         entry = self._store.get(key)
         return entry.value if entry else default
 

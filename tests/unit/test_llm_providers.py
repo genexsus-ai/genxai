@@ -167,50 +167,53 @@ def test_cohere_provider_with_model():
 
 # ==================== Provider Comparison Tests ====================
 
-def test_all_providers_have_generate_method():
+@pytest.mark.asyncio
+async def test_all_providers_have_generate_method():
     """Test that all providers have generate method."""
     providers = [
         OpenAIProvider(api_key="test"),
         AnthropicProvider(api_key="test"),
         GoogleProvider(api_key="test"),
         CohereProvider(api_key="test"),
-        OllamaProvider()
+        OllamaProvider(),
     ]
     
     for provider in providers:
         assert hasattr(provider, "generate")
-        if hasattr(provider, "close"):
-            provider.close()
+        if hasattr(provider, "aclose"):
+            await provider.aclose()
 
 
-def test_all_providers_have_api_key():
+@pytest.mark.asyncio
+async def test_all_providers_have_api_key():
     """Test that all providers store API key."""
     providers = [
         OpenAIProvider(api_key="test_key"),
         AnthropicProvider(api_key="test_key"),
         GoogleProvider(api_key="test_key"),
         CohereProvider(api_key="test_key"),
-        OllamaProvider(api_key="test_key")
+        OllamaProvider(api_key="test_key"),
     ]
     
     for provider in providers:
         assert provider.api_key == "test_key"
-        if hasattr(provider, "close"):
-            provider.close()
+        if hasattr(provider, "aclose"):
+            await provider.aclose()
 
 
-def test_all_providers_have_model():
+@pytest.mark.asyncio
+async def test_all_providers_have_model():
     """Test that all providers have model attribute."""
     providers = [
         OpenAIProvider(api_key="test"),
         AnthropicProvider(api_key="test"),
         GoogleProvider(api_key="test"),
         CohereProvider(api_key="test"),
-        OllamaProvider()
+        OllamaProvider(),
     ]
     
     for provider in providers:
         assert hasattr(provider, "model")
         assert provider.model is not None
-        if hasattr(provider, "close"):
-            provider.close()
+        if hasattr(provider, "aclose"):
+            await provider.aclose()

@@ -113,6 +113,8 @@ class FileWriterTool(Tool):
                 "mode": mode,
             })
 
+        except PermissionError:
+            result["error"] = f"Permission denied: {path}"
         except Exception as e:
             result["error"] = str(e)
 

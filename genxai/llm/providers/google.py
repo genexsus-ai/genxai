@@ -332,3 +332,17 @@ class GoogleProvider(LLMProvider):
         except Exception as e:
             logger.error(f"Google Gemini chat API call failed: {e}")
             raise
+
+    async def aclose(self) -> None:
+        """Close Google client if supported."""
+        if not self._client:
+            return
+
+        close_fn = getattr(self._client, "close", None)
+        if close_fn:
+            result = close_fn()
+            if hasattr(result, "__await__"):
+                await result
+
+        self._client = None
+        self._model_instance = None

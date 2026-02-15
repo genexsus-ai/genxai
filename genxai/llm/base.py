@@ -149,14 +149,18 @@ class LLMProvider(ABC):
             if inspect.iscoroutinefunction(close_fn):
                 await close_fn()
             else:
-                close_fn()
+                result = close_fn()
+                if inspect.isawaitable(result):
+                    await result
         else:
             close_fn = getattr(client, "close", None)
             if close_fn:
                 if inspect.iscoroutinefunction(close_fn):
                     await close_fn()
                 else:
-                    close_fn()
+                    result = close_fn()
+                    if inspect.isawaitable(result):
+                        await result
 
         self._client = None
 

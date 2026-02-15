@@ -5,8 +5,9 @@ This repository contains the **MIT‑licensed GenXAI core framework**.
 ## OSS vs Enterprise Summary
 
 - **OSS core (MIT)**: `genxai/`, `examples/`, `docs/`, `tests/`, `scripts/`
-- **Enterprise (commercial)**: everything under `enterprise/` (Studio, CLI, connectors, triggers,
-  security, observability, metrics)
+  - Includes the OSS CLI at `genxai/cli`
+- **Enterprise (commercial)**: everything under `enterprise/` (Studio, enterprise CLI extensions,
+  connectors, triggers, security, observability, metrics)
 
 ## Open‑Source (MIT) Scope
 

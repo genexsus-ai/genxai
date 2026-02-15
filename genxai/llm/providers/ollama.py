@@ -142,6 +142,6 @@ class OllamaProvider(LLMProvider):
                 if chunk:
                     yield chunk
 
-    async def close(self) -> None:
+    async def aclose(self) -> None:
         """Close HTTP client."""
         await self._client.aclose()

@@ -68,6 +68,10 @@ class VectorStore(ABC):
         """Get vector store statistics."""
         pass
 
+    async def aclose(self) -> None:
+        """Close any underlying resources."""
+        return
+
 
 class ChromaVectorStore(VectorStore):
     """ChromaDB vector store implementation."""
@@ -259,6 +263,21 @@ class ChromaVectorStore(VectorStore):
         except Exception as e:
             logger.error(f"Failed to get ChromaDB stats: {e}")
             return {"backend": "chromadb", "error": str(e)}
+
+    async def aclose(self) -> None:
+        """Close ChromaDB client if available."""
+        if not self._client:
+            return
+
+        close_fn = getattr(self._client, "close", None)
+        if close_fn:
+            result = close_fn()
+            if hasattr(result, "__await__"):
+                await result
+
+        self._client = None
+        self._collection = None
+        self._initialized = False
 
 
 class PineconeVectorStore(VectorStore):
@@ -454,6 +473,20 @@ class PineconeVectorStore(VectorStore):
         except Exception as e:
             logger.error(f"Failed to get Pinecone stats: {e}")
             return {"backend": "pinecone", "error": str(e)}
+
+    async def aclose(self) -> None:
+        """Close Pinecone index if available."""
+        if not self._index:
+            return
+
+        close_fn = getattr(self._index, "close", None)
+        if close_fn:
+            result = close_fn()
+            if hasattr(result, "__await__"):
+                await result
+
+        self._index = None
+        self._initialized = False
 
 
 class VectorStoreFactory:

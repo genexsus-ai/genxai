@@ -27,6 +27,13 @@ from genxai.tools.registry import ToolRegistry
 from genxai.core.execution import WorkerQueueEngine, ExecutionStore
 from genxai.tools.builtin.computation.calculator import CalculatorTool
 from genxai.tools.builtin.file.file_reader import FileReaderTool
+from genxai.utils.enterprise_compat import (
+    get_audit_log,
+    get_current_user,
+    get_policy_engine,
+    AuditEvent,
+    Permission,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -416,6 +423,17 @@ class WorkflowExecutor:
                 checkpoint = graph.load_checkpoint(resume_from, Path(checkpoint_dir))
 
             # Execute graph
+            user = get_current_user()
+            if user is not None:
+                get_policy_engine().check(user, "workflow:workflow", Permission.WORKFLOW_EXECUTE)
+                get_audit_log().record(
+                    AuditEvent(
+                        action="workflow.execute",
+                        actor_id=user.user_id,
+                        resource_id="workflow:workflow",
+                        status="allowed",
+                    )
+                )
             result = await graph.run(
                 input_data=input_data,
                 resume_from=checkpoint,

@@ -1,7 +1,7 @@
 # No-Code Workflow Templates
 
-These YAML templates are designed for the GenXAI Studio and enterprise CLI to provide
-quick-start, visual workflows without writing code.
+These YAML templates are designed for the GenXAI Studio and the OSS CLI (`genxai workflow`)
+to provide quick-start, visual workflows without writing code.
 
 ## Reusable Agent Definitions
 
@@ -25,20 +25,18 @@ new workflows.
 ## How to Use
 
 ```bash
-# In the enterprise repo
 genxai workflow run examples/nocode/customer_support.yaml \
   --input '{"message": "My billing failed"}'
 ```
 
 Shared memory example:
-
 ```bash
-# In the enterprise repo
 genxai workflow run examples/nocode/shared_memory_workflow.yaml \
   --input '{"task": "Draft a short response"}'
 ```
 
-> Note: CLI support may require the Studio API or workflow runner integration.
+> Note: Some templates may reference Studio-only features in enterprise builds, but
+> the OSS CLI can run standard workflow YAML via `genxai workflow run`.
 
 ## Customize
 

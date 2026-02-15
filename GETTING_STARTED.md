@@ -21,6 +21,22 @@ pip install -e ".[all]"
 export OPENAI_API_KEY="your-api-key-here"
 ```
 
+### CLI Quick Start (OSS)
+
+The OSS package ships a `genxai` CLI with `tool` and `workflow` commands.
+
+```bash
+# Verify the CLI entry point
+genxai --help
+
+# List available tools
+genxai tool list
+
+# Run a YAML workflow
+genxai workflow run examples/nocode/content_generation.yaml \
+  --input '{"topic": "AI workflow design"}'
+```
+
 ### Your First Workflow
 
 Create a simple agent workflow in Python:
@@ -232,10 +248,12 @@ MIT License - see [LICENSE](./LICENSE) for details.
 
 ## 🟢 Enterprise Edition
 
-The Studio UI, CLI, connectors, triggers, security, and observability modules
+The Studio UI, connectors, triggers, security, and observability modules
 are staged under `enterprise/` and intended for the **commercial enterprise
-repository**. If you need these, extract `enterprise/` into a private repo and
-add your commercial license.
+repository**. The OSS CLI ships in `genxai/cli`, while enterprise distributions
+can add extra CLI command groups via plugins or `enterprise/cli` modules. If you
+need those extras, extract `enterprise/` into a private repo and add your
+commercial license.
 
 ## 🆘 Support
 

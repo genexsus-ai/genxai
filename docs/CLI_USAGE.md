@@ -1,6 +1,17 @@
-# GenXAI CLI - Tool Management (Enterprise)
+# GenXAI CLI
 
-The GenXAI CLI is part of the enterprise edition and lives under `enterprise/`.
+The GenXAI CLI is available in the **OSS core** and can be extended by the
+enterprise edition.
+
+## OSS vs Enterprise CLI model
+
+- **OSS** provides the base executable `genxai` and the core command groups:
+  - `genxai tool ...`
+  - `genxai workflow ...`
+
+- **Enterprise** adds additional command groups (metrics, connectors, approvals,
+  audit) by registering a CLI plugin via the `genxai.cli_plugins` entry-point
+  group.
 
 ## Installation
 
@@ -17,6 +28,18 @@ pip install "genxai[llm,tools,api]"
 # Everything included
 pip install "genxai[all]"
 ```
+
+### Enterprise install (concept)
+
+In the private enterprise distribution, register:
+
+```toml
+[project.entry-points."genxai.cli_plugins"]
+enterprise = "enterprise.cli.plugin:plugin_commands"
+```
+
+After installing the enterprise package, `genxai --help` will also show
+enterprise-only command groups.
 
 ## Tool Management Commands
 
