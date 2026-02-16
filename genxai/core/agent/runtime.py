@@ -11,7 +11,7 @@ import re
 from genxai.core.agent.base import Agent
 from genxai.llm.base import LLMProvider
 from genxai.llm.factory import LLMProviderFactory
-from genxai.utils.tokens import manage_context_window
+from genxai.utils.tokens import estimate_tokens, manage_context_window
 from genxai.utils.llm_ranking import RankCandidate, rank_candidates_with_llm
 from genxai.utils.enterprise_compat import (
     add_event,
@@ -222,7 +222,7 @@ class AgentRuntime:
             Execution result
         """
         logger.info(f"Executing agent {self.agent.id}: {task}")
-        
+
         # Get memory context if available
         memory_context = ""
         if self.agent.config.enable_memory and self._memory:
@@ -1044,6 +1044,71 @@ class AgentRuntime:
         except Exception as e:
             logger.error(f"Failed to update memory: {e}")
 
+    async def _refresh_rolling_summary_if_needed(self) -> None:
+        """Refresh rolling summary when older memory exceeds token threshold.
+
+        This keeps prompt memory compact by summarizing older turns while
+        preserving a recent sliding window in raw form.
+        """
+        if not self._memory or not self._llm_provider:
+            return
+        if not hasattr(self._memory, "config"):
+            return
+
+        config = getattr(self._memory, "config", None)
+        if not config or not getattr(config, "rolling_summary_enabled", False):
+            return
+
+        if not all(
+            hasattr(self._memory, attr)
+            for attr in (
+                "get_older_context_for_summary",
+                "get_rolling_summary",
+                "set_rolling_summary",
+                "prune_short_term_to_window",
+            )
+        ):
+            return
+
+        try:
+            older_context = await self._memory.get_older_context_for_summary(
+                keep_recent=getattr(config, "short_term_window_size", 6)
+            )
+            if not older_context:
+                return
+
+            older_tokens = estimate_tokens(older_context)
+            if older_tokens < getattr(config, "rolling_summary_trigger_tokens", 2000):
+                return
+
+            existing_summary = self._memory.get_rolling_summary() or ""
+            summary_instruction = (
+                "Create a compact rolling summary of the conversation history. "
+                "Preserve stable preferences, constraints, key decisions, unresolved tasks, "
+                "and important facts. Remove redundancy and chatter."
+            )
+            summary_prompt = (
+                f"Existing summary:\n{existing_summary or '(none)'}\n\n"
+                f"Older conversation turns to merge:\n{older_context}\n\n"
+                "Return only the updated summary text."
+            )
+
+            summary_response = await self._llm_provider.generate(
+                prompt=summary_prompt,
+                system_prompt=summary_instruction,
+            )
+            new_summary = summary_response.content.strip()
+            if not new_summary:
+                return
+
+            self._memory.set_rolling_summary(new_summary)
+            self._memory.prune_short_term_to_window(
+                keep_recent=getattr(config, "short_term_window_size", 6)
+            )
+            logger.debug("Rolling summary updated for agent %s", self.agent.id)
+        except Exception as exc:
+            logger.warning("Failed to refresh rolling summary for %s: %s", self.agent.id, exc)
+
     def set_llm_provider(self, provider: Any) -> None:
         """Set LLM provider.
 
@@ -1084,6 +1149,17 @@ class AgentRuntime:
             return ""
         
         try:
+            await self._refresh_rolling_summary_if_needed()
+
+            if hasattr(self._memory, "build_prompt_memory_context"):
+                window = limit
+                if hasattr(self._memory, "config"):
+                    window = getattr(self._memory.config, "short_term_window_size", limit)
+                return await self._memory.build_prompt_memory_context(
+                    window_size=window,
+                    max_tokens=2000,
+                )
+
             # Get context from short-term memory
             context = await self._memory.get_short_term_context(max_tokens=2000)
             return context

@@ -109,6 +109,44 @@ class MockMemory:
         return memory_id
 
 
+class MockRollingMemory:
+    """Mock memory with rolling-summary APIs."""
+
+    def __init__(self, older_context: str = "", prompt_context: str = "") -> None:
+        self._older_context = older_context
+        self._prompt_context = prompt_context
+        self.summary = ""
+        self.pruned_to = None
+        self.config = type(
+            "Cfg",
+            (),
+            {
+                "rolling_summary_enabled": True,
+                "short_term_window_size": 2,
+                "rolling_summary_trigger_tokens": 5,
+            },
+        )()
+
+    async def get_older_context_for_summary(self, keep_recent: int = 2) -> str:
+        return self._older_context
+
+    def get_rolling_summary(self) -> str:
+        return self.summary
+
+    def set_rolling_summary(self, summary: str) -> None:
+        self.summary = summary
+
+    def prune_short_term_to_window(self, keep_recent: int = 2) -> int:
+        self.pruned_to = keep_recent
+        return 1
+
+    async def build_prompt_memory_context(self, window_size: int = 2, max_tokens: int = 2000) -> str:
+        return self._prompt_context
+
+    async def get_short_term_context(self, max_tokens: int = 2000) -> str:
+        return "fallback"
+
+
 @pytest.fixture
 def agent_config():
     """Create test agent configuration."""
@@ -239,6 +277,36 @@ async def test_memory_update_after_execution(runtime):
     stored = mock_memory.stored_items[0]
     assert stored["content"]["task"] == "Test task"
     assert stored["content"]["response"] == "Mock response"
+
+
+@pytest.mark.asyncio
+async def test_get_memory_context_prefers_prompt_context_builder(runtime):
+    """Runtime should use memory.build_prompt_memory_context when available."""
+    rolling_memory = MockRollingMemory(
+        older_context="",  # no summary refresh needed
+        prompt_context="Conversation summary:\nshort summary\n\nRecent turns:\n- latest",
+    )
+    runtime.set_memory(rolling_memory)
+
+    context = await runtime.get_memory_context(limit=2)
+    assert "Conversation summary" in context
+    assert "latest" in context
+
+
+@pytest.mark.asyncio
+async def test_refresh_rolling_summary_when_threshold_exceeded(runtime):
+    """Runtime should summarize older context and prune memory window."""
+    long_older_context = "Older turns:\n" + ("x" * 200)
+    rolling_memory = MockRollingMemory(
+        older_context=long_older_context,
+        prompt_context="Recent turns:\n- kept",
+    )
+    runtime.set_memory(rolling_memory)
+
+    await runtime.get_memory_context(limit=2)
+
+    assert rolling_memory.summary != ""
+    assert rolling_memory.pruned_to == 2
 
 
 # ==================== Retry Logic Tests ====================

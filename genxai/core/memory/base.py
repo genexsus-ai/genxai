@@ -66,6 +66,12 @@ class MemoryConfig(BaseModel):
     importance_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
     retention_days: int = Field(default=365, ge=1)
 
+    # Prompt-memory compression settings
+    short_term_window_size: int = Field(default=6, ge=1)
+    rolling_summary_enabled: bool = True
+    rolling_summary_trigger_tokens: int = Field(default=2000, ge=100)
+    rolling_summary_max_tokens: int = Field(default=700, ge=100)
+
     # Embedding settings
     embedding_model: str = "text-embedding-ada-002"
     embedding_dimension: int = 1536

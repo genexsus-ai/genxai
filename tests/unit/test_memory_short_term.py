@@ -44,3 +44,34 @@ def test_short_term_context_async() -> None:
         assert "World" in context
 
     asyncio.run(run())
+
+
+def test_short_term_window_helpers() -> None:
+    memory = ShortTermMemory(capacity=5)
+    memory.store(Memory(id="1", content="a", type=MemoryType.SHORT_TERM, timestamp=datetime.now()))
+    memory.store(Memory(id="2", content="b", type=MemoryType.SHORT_TERM, timestamp=datetime.now()))
+    memory.store(Memory(id="3", content="c", type=MemoryType.SHORT_TERM, timestamp=datetime.now()))
+    memory.store(Memory(id="4", content="d", type=MemoryType.SHORT_TERM, timestamp=datetime.now()))
+
+    older = memory.retrieve_older_than_recent(keep_recent=2)
+    assert [m.id for m in older] == ["1", "2"]
+
+    removed = memory.prune_to_recent(keep_recent=2)
+    assert removed == 2
+    assert memory.retrieve("1") is None
+    assert memory.retrieve("2") is None
+    assert memory.retrieve("3") is not None
+    assert memory.retrieve("4") is not None
+
+
+def test_format_memories_as_context() -> None:
+    memory = ShortTermMemory(capacity=3)
+    samples = [
+        Memory(id="1", content={"task": "x"}, type=MemoryType.SHORT_TERM, timestamp=datetime.now()),
+        Memory(id="2", content="plain", type=MemoryType.SHORT_TERM, timestamp=datetime.now()),
+    ]
+
+    formatted = memory.format_memories_as_context(samples, header="Window:")
+    assert formatted.startswith("Window:")
+    assert "task" in formatted
+    assert "plain" in formatted

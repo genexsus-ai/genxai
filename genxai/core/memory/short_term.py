@@ -99,6 +99,59 @@ class ShortTermMemory:
         logger.debug(f"Retrieved {len(recent_items)} recent memories")
         return recent_items
 
+    def retrieve_older_than_recent(self, keep_recent: int) -> List[Memory]:
+        """Retrieve memories older than the most recent N entries.
+
+        Args:
+            keep_recent: Number of most recent memories to keep out of result
+
+        Returns:
+            List of older memories (oldest first)
+        """
+        if keep_recent <= 0:
+            return list(self._memories.values())
+
+        memories = list(self._memories.values())
+        if len(memories) <= keep_recent:
+            return []
+        return memories[:-keep_recent]
+
+    def prune_to_recent(self, keep_recent: int) -> int:
+        """Prune memory to keep only the most recent N entries.
+
+        Args:
+            keep_recent: Number of recent memories to retain
+
+        Returns:
+            Number of entries removed
+        """
+        if keep_recent < 0:
+            keep_recent = 0
+
+        memories = list(self._memories.items())
+        if len(memories) <= keep_recent:
+            return 0
+
+        remove_count = len(memories) - keep_recent
+        for key, _ in memories[:remove_count]:
+            self._memories.pop(key, None)
+        logger.debug("Pruned %s old short-term memories", remove_count)
+        return remove_count
+
+    def format_memories_as_context(
+        self,
+        memories: List[Memory],
+        header: str = "Recent context:",
+    ) -> str:
+        """Format a list of memories as prompt-ready context text."""
+        if not memories:
+            return ""
+
+        context_parts = [header]
+        for memory in memories:
+            context_parts.append(f"- {memory.content}")
+        return "\n".join(context_parts)
+
     def retrieve_by_importance(self, threshold: float = 0.5, limit: int = 10) -> List[Memory]:
         """Retrieve memories above an importance threshold.
 
@@ -276,16 +329,7 @@ class ShortTermMemory:
         if not recent:
             return ""
         
-        context_parts = ["Recent context:"]
-        for memory in recent:
-            # Keep this robust: if content is a dict, stringify it so unit tests
-            # can find values like "Hello" in the context.
-            if isinstance(memory.content, dict):
-                context_parts.append(f"- {memory.content}")
-            else:
-                context_parts.append(f"- {memory.content}")
-        
-        return "\n".join(context_parts)
+        return self.format_memories_as_context(recent, header="Recent context:")
     
     async def clear_async(self) -> None:
         """Clear all memories (async version)."""

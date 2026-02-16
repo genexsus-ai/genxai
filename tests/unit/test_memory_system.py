@@ -3,7 +3,7 @@
 import pytest
 from pathlib import Path
 from genxai.core.memory.manager import MemorySystem
-from genxai.core.memory.base import Memory, MemoryType
+from genxai.core.memory.base import Memory, MemoryType, MemoryConfig
 from genxai.core.memory.long_term import LongTermMemory
 from genxai.core.memory.persistence import MemoryPersistenceConfig
 
@@ -127,3 +127,48 @@ async def test_long_term_memory_persistence(tmp_path: Path):
     loaded = reloaded.retrieve("memory-1")
     assert loaded is not None
     assert loaded.content["note"] == "persistent"
+
+
+@pytest.mark.asyncio
+async def test_prompt_memory_context_with_rolling_summary():
+    """Prompt memory context should combine summary + recent window."""
+    config = MemoryConfig(short_term_window_size=2, rolling_summary_enabled=True)
+    memory = MemorySystem(agent_id="test_agent", config=config)
+
+    await memory.add_to_short_term(content={"message": "m1"})
+    await memory.add_to_short_term(content={"message": "m2"})
+    await memory.add_to_short_term(content={"message": "m3"})
+    memory.set_rolling_summary("User prefers concise bullet points.")
+
+    context = await memory.build_prompt_memory_context(window_size=2, max_tokens=1000)
+    assert "Conversation summary:" in context
+    assert "User prefers concise bullet points" in context
+    assert "m3" in context
+    assert "m2" in context
+
+
+@pytest.mark.asyncio
+async def test_older_context_and_prune_to_window():
+    """Older context extraction should exclude recent window and pruning should retain it."""
+    config = MemoryConfig(short_term_window_size=2)
+    memory = MemorySystem(agent_id="test_agent", config=config)
+
+    await memory.add_to_short_term(content={"message": "m1"})
+    await memory.add_to_short_term(content={"message": "m2"})
+    await memory.add_to_short_term(content={"message": "m3"})
+    await memory.add_to_short_term(content={"message": "m4"})
+
+    older_context = await memory.get_older_context_for_summary(keep_recent=2)
+    assert "m1" in older_context
+    assert "m2" in older_context
+    assert "m3" not in older_context
+    assert "m4" not in older_context
+
+    removed = memory.prune_short_term_to_window(keep_recent=2)
+    assert removed == 2
+
+    recent_context = await memory.get_recent_window_context(window_size=5)
+    assert "m3" in recent_context
+    assert "m4" in recent_context
+    assert "m1" not in recent_context
+    assert "m2" not in recent_context

@@ -3,6 +3,7 @@
 from typing import Any, Dict, List, Optional, Tuple
 import logging
 import asyncio
+from datetime import datetime
 
 from pathlib import Path
 from genxai.core.memory.base import Memory, MemoryType, MemoryConfig
@@ -15,6 +16,7 @@ from genxai.core.memory.working import WorkingMemory
 from genxai.core.memory.vector_store import VectorStoreFactory
 from genxai.core.memory.embedding import EmbeddingServiceFactory
 from genxai.core.memory.persistence import MemoryPersistenceConfig
+from genxai.utils.tokens import truncate_to_token_limit
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +60,11 @@ class MemorySystem:
             backend=persistence_backend,
             sqlite_path=persistence_sqlite_path,
         )
+
+        # Rolling-summary state for prompt-memory compression
+        self.rolling_summary: str = ""
+        self.summary_updated_at: Optional[datetime] = None
+        self.summary_version: int = 0
 
         # Initialize short-term memory
         self.short_term = ShortTermMemory(capacity=self.config.short_term_capacity)
@@ -146,6 +153,93 @@ class MemorySystem:
             Formatted context string
         """
         return await self.short_term.get_context(max_tokens)
+
+    async def get_recent_window_context(self, window_size: Optional[int] = None) -> str:
+        """Get context from the most recent short-term memories.
+
+        Args:
+            window_size: Number of recent memories to include
+
+        Returns:
+            Formatted recent-memory context string
+        """
+        size = window_size or self.config.short_term_window_size
+        recent_memories = self.short_term.retrieve_recent(limit=size)
+        return self.short_term.format_memories_as_context(
+            recent_memories,
+            header="Recent turns:",
+        )
+
+    async def get_older_context_for_summary(self, keep_recent: Optional[int] = None) -> str:
+        """Get older short-term memories to be summarized.
+
+        Args:
+            keep_recent: Number of recent entries to exclude from summary input
+
+        Returns:
+            Formatted older-memory context string
+        """
+        window = keep_recent or self.config.short_term_window_size
+        older_memories = self.short_term.retrieve_older_than_recent(window)
+        return self.short_term.format_memories_as_context(
+            older_memories,
+            header="Older turns:",
+        )
+
+    def prune_short_term_to_window(self, keep_recent: Optional[int] = None) -> int:
+        """Prune short-term memory to keep only the latest N entries.
+
+        Args:
+            keep_recent: Number of recent entries to retain
+
+        Returns:
+            Number of removed entries
+        """
+        window = keep_recent or self.config.short_term_window_size
+        return self.short_term.prune_to_recent(window)
+
+    def set_rolling_summary(self, summary: str) -> None:
+        """Set rolling summary text with configured token bound."""
+        bounded = truncate_to_token_limit(
+            summary or "",
+            self.config.rolling_summary_max_tokens,
+            preserve_start=False,
+        )
+        self.rolling_summary = bounded
+        self.summary_updated_at = datetime.now()
+        self.summary_version += 1
+
+    def get_rolling_summary(self) -> str:
+        """Get current rolling summary text."""
+        return self.rolling_summary
+
+    async def build_prompt_memory_context(
+        self,
+        window_size: Optional[int] = None,
+        max_tokens: int = 2000,
+    ) -> str:
+        """Build prompt-ready memory context from summary + recent turns.
+
+        Args:
+            window_size: Sliding-window size for recent turns
+            max_tokens: Token budget for final memory context
+
+        Returns:
+            Formatted and token-bounded memory context
+        """
+        parts: List[str] = []
+
+        if self.config.rolling_summary_enabled and self.rolling_summary:
+            parts.append(f"Conversation summary:\n{self.rolling_summary}")
+
+        recent_context = await self.get_recent_window_context(window_size=window_size)
+        if recent_context:
+            parts.append(recent_context)
+
+        context = "\n\n".join(parts)
+        if not context:
+            return ""
+        return truncate_to_token_limit(context, max_tokens=max_tokens, preserve_start=False)
 
     async def clear_short_term(self) -> None:
         """Clear short-term memory."""
@@ -521,6 +615,14 @@ class MemorySystem:
         stats["persistence"] = {
             "enabled": self._persistence.enabled,
             "path": str(self._persistence.base_dir),
+        }
+
+        stats["rolling_summary"] = {
+            "enabled": self.config.rolling_summary_enabled,
+            "version": self.summary_version,
+            "updated_at": self.summary_updated_at.isoformat() if self.summary_updated_at else None,
+            "token_budget": self.config.rolling_summary_max_tokens,
+            "has_summary": bool(self.rolling_summary),
         }
 
         return stats
