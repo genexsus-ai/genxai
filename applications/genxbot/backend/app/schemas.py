@@ -18,6 +18,31 @@ class RunTaskRequest(BaseModel):
     repo_path: str = Field(..., min_length=1)
     context: Optional[str] = None
     requested_by: str = "anonymous"
+    recipe_id: Optional[str] = None
+    recipe_inputs: dict[str, str] = Field(default_factory=dict)
+
+
+class RecipeDefinition(BaseModel):
+    id: str
+    name: str
+    description: str
+    goal_template: str
+    context_template: Optional[str] = None
+    tags: list[str] = Field(default_factory=list)
+    enabled: bool = True
+
+
+class RecipeCreateRequest(BaseModel):
+    id: str = Field(..., min_length=2)
+    name: str = Field(..., min_length=2)
+    description: str = ""
+    goal_template: str = Field(..., min_length=3)
+    context_template: Optional[str] = None
+    tags: list[str] = Field(default_factory=list)
+
+
+class RecipeListResponse(BaseModel):
+    recipes: list[RecipeDefinition] = Field(default_factory=list)
 
 
 class ConnectorTriggerRequest(BaseModel):

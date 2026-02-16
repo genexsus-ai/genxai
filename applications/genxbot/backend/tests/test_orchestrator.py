@@ -1703,3 +1703,65 @@ def test_deadletter_replay_endpoint_requeues_job() -> None:
     finally:
         queue.stop()
         runs_routes._outbound_retry_queue = original_queue
+
+
+def test_recipes_endpoints_list_get_create() -> None:
+    original_recipes = dict(runs_routes._recipes)
+    try:
+        client = TestClient(create_app())
+
+        listed = client.get("/api/v1/runs/recipes")
+        assert listed.status_code == 200
+        assert "recipes" in listed.json()
+        assert any(r["id"] == "test-hardening" for r in listed.json()["recipes"])
+
+        fetched = client.get("/api/v1/runs/recipes/test-hardening")
+        assert fetched.status_code == 200
+        assert fetched.json()["id"] == "test-hardening"
+
+        created = client.post(
+            "/api/v1/runs/recipes",
+            json={
+                "id": "docs-refresh",
+                "name": "Docs Refresh",
+                "description": "Refresh docs around a module",
+                "goal_template": "Improve docs for {module_name}",
+                "context_template": "priority={priority}",
+                "tags": ["docs"],
+            },
+        )
+        assert created.status_code == 200
+        assert created.json()["id"] == "docs-refresh"
+
+        fetched_new = client.get("/api/v1/runs/recipes/docs-refresh")
+        assert fetched_new.status_code == 200
+        assert fetched_new.json()["name"] == "Docs Refresh"
+    finally:
+        runs_routes._recipes.clear()
+        runs_routes._recipes.update(original_recipes)
+
+
+def test_create_run_with_recipe_renders_goal_and_context(tmp_path: Path) -> None:
+    original_orchestrator = runs_routes._orchestrator
+    original_recipes = dict(runs_routes._recipes)
+    runs_routes._orchestrator = build_orchestrator()
+    try:
+        client = TestClient(create_app())
+        response = client.post(
+            "/api/v1/runs",
+            json={
+                "goal": "placeholder",
+                "repo_path": str(tmp_path),
+                "recipe_id": "test-hardening",
+                "recipe_inputs": {"target_area": "memory", "priority": "high"},
+                "requested_by": "recipe-user",
+            },
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["goal"] == "Harden tests for memory and summarize gaps"
+        assert payload["id"].startswith("run_")
+    finally:
+        runs_routes._recipes.clear()
+        runs_routes._recipes.update(original_recipes)
+        runs_routes._orchestrator = original_orchestrator

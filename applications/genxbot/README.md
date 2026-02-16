@@ -7,6 +7,10 @@ This app is scaffolded in `applications/genxbot` and now wired to **GenXAI** pri
 - `ToolRegistry` + built-in tools for tool-available execution context
 - `CriticReviewFlow` for reviewer feedback loop
 
+👉 New: Full usage/tutorial doc: [`USAGE_GUIDE.md`](./USAGE_GUIDE.md)
+
+👉 New: GenXBot vs OpenClaw comparison: [`COMPARISON_OPENCLAW.md`](./COMPARISON_OPENCLAW.md)
+
 ## Structure
 
 ```text
@@ -46,9 +50,44 @@ npm install
 npm run dev
 ```
 
+## Global CLI install (Phase 7A)
+
+GenXBot now includes a global-installable CLI scaffold under `applications/genxbot/cli`.
+
+### Local/global install from this repo
+
+```bash
+cd /Users/irsalimran/Desktop/GenXAI-OSS/applications/genxbot/cli
+npm install -g .
+```
+
+Then run:
+
+```bash
+genxbot onboard
+# optional daemon install on macOS/Linux
+genxbot onboard --install-daemon
+```
+
+### Intended npm publish flow
+
+After publishing this package to npm (name currently `genxbot`), users can install like:
+
+```bash
+npm install -g genxbot@latest
+# or: pnpm add -g genxbot@latest
+```
+
+Detailed release/publish instructions:
+
+- [`applications/genxbot/cli/PUBLISHING.md`](./cli/PUBLISHING.md)
+
 ## API
 
 - `POST /api/v1/runs` create autonomous coding run
+- `GET /api/v1/runs/recipes` list available recipes
+- `GET /api/v1/runs/recipes/{recipe_id}` get recipe details
+- `POST /api/v1/runs/recipes` create recipe (admin)
 - `GET /api/v1/runs` list runs
 - `GET /api/v1/runs/{run_id}` run details
 - `POST /api/v1/runs/{run_id}/approval` approve/reject proposed action
@@ -73,6 +112,29 @@ npm run dev
 - `POST /api/v1/runs/channels/idempotency-cache/clear` clear idempotency cache (admin protected)
 - `GET /api/v1/runs/queue/health` queue worker and backlog health snapshot
 - `POST /api/v1/runs/channels/{channel}` supports optional `x-idempotency-key` header for dedupe
+
+### Recipes (Phase 7B)
+
+GenXBot now supports **Recipes** (reusable run templates) as an alternative to “skills”.
+
+You can create runs with:
+
+- `recipe_id`
+- `recipe_inputs` (used to render recipe templates)
+
+Example:
+
+```json
+{
+  "goal": "placeholder",
+  "repo_path": "/path/to/repo",
+  "recipe_id": "test-hardening",
+  "recipe_inputs": {
+    "target_area": "memory",
+    "priority": "high"
+  }
+}
+```
 
 ### Admin security headers (for protected endpoints when `ADMIN_API_TOKEN` is set)
 

@@ -34,6 +34,9 @@ from app.schemas import (
     PendingPairingCode,
     QueueJobStatusResponse,
     RerunFailedStepRequest,
+    RecipeCreateRequest,
+    RecipeDefinition,
+    RecipeListResponse,
     RunSession,
     RunTaskRequest,
 )
@@ -124,6 +127,42 @@ _channel_idempotency_cache_ttl_seconds = max(_settings.channel_idempotency_cache
 _channel_idempotency_cache_max_entries = max(_settings.channel_idempotency_cache_max_entries, 1)
 _admin_authz = AdminAuthorizationService()
 _admin_audit = AdminAuditService(max_entries=_settings.admin_audit_max_entries)
+_recipes: dict[str, RecipeDefinition] = {
+    "test-hardening": RecipeDefinition(
+        id="test-hardening",
+        name="Test Hardening",
+        description="Improve and stabilize tests around a target area",
+        goal_template="Harden tests for {target_area} and summarize gaps",
+        context_template="focus={target_area}\npriority={priority}",
+        tags=["testing", "quality"],
+        enabled=True,
+    )
+}
+
+
+def _render_template(template: str | None, values: dict[str, str]) -> str | None:
+    if template is None:
+        return None
+    if not values:
+        return template
+    try:
+        return template.format(**values)
+    except Exception:
+        return template
+
+
+def _resolve_recipe_request(request: RunTaskRequest) -> RunTaskRequest:
+    if not request.recipe_id:
+        return request
+    recipe = _recipes.get(request.recipe_id)
+    if not recipe or not recipe.enabled:
+        raise HTTPException(status_code=404, detail=f"Recipe not found: {request.recipe_id}")
+
+    rendered_goal = _render_template(recipe.goal_template, request.recipe_inputs) or request.goal
+    rendered_context = _render_template(recipe.context_template, request.recipe_inputs)
+    merged_context = "\n".join(v for v in [request.context, rendered_context] if v)
+
+    return request.model_copy(update={"goal": rendered_goal, "context": merged_context or None})
 
 
 def _send_outbound(
@@ -227,7 +266,36 @@ def create_run(
     request: RunTaskRequest,
     orchestrator: GenXBotOrchestrator = Depends(get_orchestrator),
 ) -> RunSession:
-    return orchestrator.create_run(request)
+    return orchestrator.create_run(_resolve_recipe_request(request))
+
+
+@router.get("/recipes", response_model=RecipeListResponse)
+def list_recipes() -> RecipeListResponse:
+    return RecipeListResponse(recipes=sorted(_recipes.values(), key=lambda r: r.id))
+
+
+@router.get("/recipes/{recipe_id}", response_model=RecipeDefinition)
+def get_recipe(recipe_id: str) -> RecipeDefinition:
+    recipe = _recipes.get(recipe_id)
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    return recipe
+
+
+@router.post("/recipes", response_model=RecipeDefinition)
+def create_recipe(request: RecipeCreateRequest, raw_request: Request) -> RecipeDefinition:
+    _admin_authz.require(raw_request, minimum_role="admin")
+    recipe = RecipeDefinition(
+        id=request.id.strip(),
+        name=request.name.strip(),
+        description=request.description.strip(),
+        goal_template=request.goal_template,
+        context_template=request.context_template,
+        tags=[t.strip() for t in request.tags if t.strip()],
+        enabled=True,
+    )
+    _recipes[recipe.id] = recipe
+    return recipe
 
 
 @router.get("", response_model=list[RunSession])
