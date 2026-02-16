@@ -515,10 +515,10 @@ AuctionFlow(
 
 ---
 
-## Triggers (Enterprise)
+## Triggers (OSS Runtime)
 
 Triggers emit workflow events for schedules, webhooks, and queues and are part
-of the enterprise edition.
+of the OSS runtime.
 
 ```python
 from genxai.triggers import WebhookTrigger, ScheduleTrigger
@@ -543,10 +543,10 @@ await schedule.start()
 
 ---
 
-## Connectors (Enterprise)
+## Connectors (OSS Runtime)
 
 Connectors integrate external systems (Kafka, SQS, Postgres CDC, Webhooks) and
-are part of the enterprise edition.
+are part of the OSS runtime.
 
 ```python
 from genxai.connectors import WebhookConnector, ConnectorRegistry
@@ -667,7 +667,7 @@ ToolRegistry.register(MyTool())
 
 ---
 
-## Observability (Enterprise)
+## Observability (OSS Runtime)
 
 ### Metrics
 

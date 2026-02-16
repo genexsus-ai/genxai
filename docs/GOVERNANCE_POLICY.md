@@ -1,6 +1,7 @@
 # Governance Policy Engine
 
-GenXAI includes a resource‑level ACL policy engine layered on top of RBAC.
+GenXAI includes a resource‑level ACL policy engine layered on top of RBAC. This
+capability is part of the OSS runtime (Studio remains enterprise-only).
 
 ## How it works
 - RBAC provides coarse permissions (`tool:execute`, `agent:read`, etc.)

@@ -1,6 +1,6 @@
-# Connector SDK (Enterprise)
+# Connector SDK (OSS Runtime)
 
-The Connector SDK is part of the enterprise edition and lives under `enterprise/`.
+The Connector SDK is part of the OSS runtime and lives under `genxai/connectors`.
 
 ## Key Concepts
 - **Connector**: A long‑lived integration that emits events.

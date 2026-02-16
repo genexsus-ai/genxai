@@ -1,6 +1,8 @@
 # GenXAI Security Checklist
 
-Use this checklist before releasing new versions.
+Use this checklist before releasing new versions. The security stack (RBAC,
+policy engine, audit, rate limiting) is part of the OSS runtime; Studio remains
+enterprise-only.
 
 ## Authentication & Authorization
 

@@ -11,9 +11,9 @@ Complete guide to GenXAI framework documentation.
 | [README](../README.md) | Project overview and quick start |
 | [GETTING_STARTED](../GETTING_STARTED.md) | Installation and first workflow |
 | [QUICK_START_TUTORIAL](./QUICK_START_TUTORIAL.md) | Step-by-step tutorial with examples |
-| [Studio Guide (Enterprise)](../enterprise/studio/README.md#-studio-walkthrough-userproxy-workflow) | UserProxy walkthrough in Studio |
-| [Studio JSON Defaults (Enterprise)](../enterprise/studio/README.md#canvas-json-defaults-userproxy-template) | Copy-paste canvas starter JSON |
-| [Studio Template JSON (Enterprise)](../enterprise/studio/exports/user_proxy_template.json) | Importable UserProxy template |
+| [Studio Guide (Enterprise)](../enterprise/studio/README.md#-studio-walkthrough-userproxy-workflow) | UserProxy walkthrough in Studio (enterprise-only) |
+| [Studio JSON Defaults (Enterprise)](../enterprise/studio/README.md#canvas-json-defaults-userproxy-template) | Copy-paste canvas starter JSON (enterprise-only) |
+| [Studio Template JSON (Enterprise)](../enterprise/studio/exports/user_proxy_template.json) | Importable UserProxy template (enterprise-only) |
 
 ---
 
@@ -25,6 +25,11 @@ Complete guide to GenXAI framework documentation.
 | [WORKFLOW_BEST_PRACTICES](./WORKFLOW_BEST_PRACTICES.md) | Best practices for workflow design |
 | [AGENT_TOOL_INTEGRATION](./AGENT_TOOL_INTEGRATION.md) | Agent and tool integration guide |
 | [FLOWS](./FLOWS.md) | Flow orchestrators for common coordination patterns |
+| [WORKFLOW_COMPOSITION](./WORKFLOW_COMPOSITION.md) | Compose global workflows with subflows + deterministic steps |
+| [WORKFLOW_COMPOSITION_JSON](./diagrams/workflow_composition.json) | JSON snapshot of the workflow composition graph |
+| [COMPARISON](./COMPARISON.md) | CrewAI vs GenXAI comparison guide |
+| [COMPARISON_CHEATSHEET](./COMPARISON_CHEATSHEET.md) | Condensed comparison cheatsheet |
+| [COMPARISON_SLIDES](./COMPARISON_SLIDES.md) | Slide-style comparison outline |
 
 ---
 
@@ -33,7 +38,7 @@ Complete guide to GenXAI framework documentation.
 | Document | Description |
 |----------|-------------|
 | [API_REFERENCE](./API_REFERENCE.md) | Complete API reference with examples |
-| [CONNECTOR_SDK (Enterprise)](./CONNECTOR_SDK.md) | Connector SDK for external integrations |
+| [CONNECTOR_SDK (OSS Runtime)](./CONNECTOR_SDK.md) | Connector SDK for external integrations |
 | [LLM_INTEGRATION](./LLM_INTEGRATION.md) | LLM provider integration guide |
 
 ---
@@ -42,8 +47,8 @@ Complete guide to GenXAI framework documentation.
 
 | Document | Description |
 |----------|-------------|
-| [CLI_USAGE (OSS + Enterprise extensions)](./CLI_USAGE.md) | OSS CLI (`genxai tool/workflow`) + enterprise extensions |
-| [MCP_SETUP (Enterprise)](./MCP_SETUP.md) | Model Context Protocol server setup |
+| [CLI_USAGE (OSS Runtime)](./CLI_USAGE.md) | OSS CLI (`genxai tool/workflow/connector/metrics/approval/audit`) |
+| [MCP_SETUP (Enterprise)](./MCP_SETUP.md) | Model Context Protocol server setup (enterprise-only) |
 
 ---
 
@@ -51,9 +56,9 @@ Complete guide to GenXAI framework documentation.
 
 | Document | Description |
 |----------|-------------|
-| [GOVERNANCE_POLICY (Enterprise)](./GOVERNANCE_POLICY.md) | Policy engine and ACL configuration |
-| [AUDIT_LOGGING (Enterprise)](./AUDIT_LOGGING.md) | Audit logging and compliance |
-| [SECURITY_CHECKLIST (Enterprise)](./SECURITY_CHECKLIST.md) | Pre-release security checklist |
+| [GOVERNANCE_POLICY (OSS Runtime)](./GOVERNANCE_POLICY.md) | Policy engine and ACL configuration |
+| [AUDIT_LOGGING (OSS Runtime)](./AUDIT_LOGGING.md) | Audit logging and compliance |
+| [SECURITY_CHECKLIST (OSS Runtime)](./SECURITY_CHECKLIST.md) | Pre-release security checklist |
 
 ---
 
@@ -61,7 +66,7 @@ Complete guide to GenXAI framework documentation.
 
 | Document | Description |
 |----------|-------------|
-| [WORKER_QUEUE_ENGINE (Enterprise)](./WORKER_QUEUE_ENGINE.md) | Worker queue and task distribution |
+| [WORKER_QUEUE_ENGINE (OSS Runtime)](./WORKER_QUEUE_ENGINE.md) | Worker queue and task distribution |
 | [BENCHMARKING](./BENCHMARKING.md) | Performance benchmarking guide |
 | [GRAPH_VISUALIZATION](./GRAPH_VISUALIZATION.md) | Workflow graph visualization |
 
@@ -83,6 +88,20 @@ Complete guide to GenXAI framework documentation.
 |----------|-------------|
 | [COMPETITIVE_MATRIX](./COMPETITIVE_MATRIX.md) | Comparison vs CrewAI, AutoGen, BeeAI, LangGraph |
 | [ENTERPRISE_ROADMAP_BACKLOG](../ENTERPRISE_ROADMAP_BACKLOG.md) | Enterprise feature backlog |
+
+---
+
+## 🧩 OSS Enterprise Features (Studio Excluded)
+
+The OSS runtime includes enterprise-grade capabilities (Studio UI remains
+enterprise-only):
+
+- **Connectors**: Kafka, SQS, Postgres CDC, Webhooks, Slack, GitHub, Notion, Jira, Google Workspace
+- **Triggers**: Webhook, schedule, queue triggers
+- **Observability**: logging, metrics, tracing, alerts
+- **Security**: RBAC, policy engine, audit logging, rate limits, PII utilities
+- **CLI Extensions**: metrics, connector, approval, audit commands
+- **Worker Queue Engine**: distributed execution
 
 ---
 
@@ -125,18 +144,18 @@ Complete guide to GenXAI framework documentation.
 3. [WORKFLOW_BEST_PRACTICES](./WORKFLOW_BEST_PRACTICES.md)
 
 **Integrating External Systems**
-1. [CONNECTOR_SDK (Enterprise)](./CONNECTOR_SDK.md)
-2. [API_REFERENCE](./API_REFERENCE.md) (Enterprise Triggers & Connectors section)
+1. [CONNECTOR_SDK (OSS Runtime)](./CONNECTOR_SDK.md)
+2. [API_REFERENCE](./API_REFERENCE.md) (OSS Triggers & Connectors section)
 3. [LLM_INTEGRATION](./LLM_INTEGRATION.md)
 
 **Enterprise Deployment**
-1. [WORKER_QUEUE_ENGINE (Enterprise)](./WORKER_QUEUE_ENGINE.md)
-2. [GOVERNANCE_POLICY (Enterprise)](./GOVERNANCE_POLICY.md)
-3. [AUDIT_LOGGING (Enterprise)](./AUDIT_LOGGING.md)
-4. [SECURITY_CHECKLIST (Enterprise)](./SECURITY_CHECKLIST.md)
+1. [WORKER_QUEUE_ENGINE (OSS Runtime)](./WORKER_QUEUE_ENGINE.md)
+2. [GOVERNANCE_POLICY (OSS Runtime)](./GOVERNANCE_POLICY.md)
+3. [AUDIT_LOGGING (OSS Runtime)](./AUDIT_LOGGING.md)
+4. [SECURITY_CHECKLIST (OSS Runtime)](./SECURITY_CHECKLIST.md)
 
 **CLI & Automation**
-1. [CLI_USAGE (OSS + Enterprise extensions)](./CLI_USAGE.md)
+1. [CLI_USAGE (OSS Runtime)](./CLI_USAGE.md)
 2. [MCP_SETUP (Enterprise)](./MCP_SETUP.md)
 
 **Performance & Monitoring**

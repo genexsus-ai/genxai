@@ -349,9 +349,7 @@ python list_tools.py
 
 ---
 
-## ⏰ Example 7: Trigger a Workflow (Enterprise)
-
-> This example requires the enterprise repository.
+## ⏰ Example 7: Trigger a Workflow (OSS Runtime)
 
 ```python
 import asyncio
@@ -371,9 +369,7 @@ await trigger.start()
 
 ---
 
-## 🔌 Example 8: Connector Event Handler (Enterprise)
-
-> This example requires the enterprise repository.
+## 🔌 Example 8: Connector Event Handler (OSS Runtime)
 
 ```python
 from genxai.connectors import WebhookConnector

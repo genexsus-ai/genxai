@@ -1,98 +1,48 @@
-"""GenXAI CLI (OSS).
+"""GenXAI CLI - Enterprise entry point.
 
-This is the OSS CLI entry point.
+In the OSS/Enterprise split model, the primary CLI is provided by the OSS
+package:
 
-Enterprise distributions can inject additional commands by exposing entry points
-in the `genxai.cli_plugins` group.
+- Console script: `genxai` -> `genxai.cli.main:main`
+- OSS commands: `tool`, `workflow`
+
+Enterprise-only command groups can be added to that same executable via the
+plugin mechanism (see `enterprise.cli.plugin`).
+
+This module remains a convenience entry point for running the enterprise CLI
+directly from within the enterprise codebase.
 """
-
-from __future__ import annotations
 
 import click
 
-from genxai.cli.commands import tool, workflow
-
-
-PLUGIN_ENTRYPOINT_GROUP = "genxai.cli_plugins"
+from cli.commands import connector, metrics, tool, workflow
+from cli.commands.approval import approval
+from cli.commands.audit import audit
 
 
 @click.group()
-@click.version_option(prog_name="genxai")
-def cli() -> None:
-    """GenXAI command line interface (OSS).
-
-    Manage tools and run workflows from the command line.
+@click.version_option(version='0.1.0', prog_name='genxai')
+def cli():
+    """GenXAI - Multi-Agent AI Framework CLI.
+    
+    Manage tools, agents, workflows, and more from the command line.
     """
+    pass
 
 
-def _add_plugin_command(root: click.Group, plugin_obj) -> None:
-    """Register commands from a plugin object.
-
-    Supported plugin shapes:
-    - click.Command / click.Group: registered directly.
-    - callable returning a click.Command or iterable of click.Commands.
-    """
-
-    if isinstance(plugin_obj, click.core.BaseCommand):
-        root.add_command(plugin_obj)
-        return
-
-    if callable(plugin_obj):
-        resolved = plugin_obj()
-        if isinstance(resolved, click.core.BaseCommand):
-            root.add_command(resolved)
-            return
-        if resolved is None:
-            return
-        try:
-            for cmd in resolved:
-                if isinstance(cmd, click.core.BaseCommand):
-                    root.add_command(cmd)
-        except TypeError:
-            # Not iterable; ignore.
-            return
-
-
-def load_plugins(root: click.Group) -> None:
-    """Load CLI plugins registered via Python entry points."""
-
-    try:
-        from importlib import metadata
-    except Exception:  # pragma: no cover
-        return
-
-    try:
-        eps = metadata.entry_points()
-        # Python 3.10+ supports .select
-        candidates = eps.select(group=PLUGIN_ENTRYPOINT_GROUP)  # type: ignore[attr-defined]
-    except Exception:
-        try:
-            candidates = metadata.entry_points().get(PLUGIN_ENTRYPOINT_GROUP, [])  # type: ignore[assignment]
-        except Exception:
-            candidates = []
-
-    for ep in candidates:
-        try:
-            plugin_obj = ep.load()
-        except Exception:
-            # Plugin failed to load; do not hard-fail the core CLI.
-            continue
-        _add_plugin_command(root, plugin_obj)
-
-
-# Register OSS command groups.
+# Register command groups
 cli.add_command(tool)
+cli.add_command(metrics)
+cli.add_command(connector)
 cli.add_command(workflow)
+cli.add_command(approval)
+cli.add_command(audit)
 
-# Load optional plugins.
-load_plugins(cli)
 
-
-def main() -> None:
-    """Console script entry point."""
-
+def main():
+    """Main entry point for the CLI."""
     cli()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

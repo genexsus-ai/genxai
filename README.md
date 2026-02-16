@@ -14,11 +14,12 @@ GenXAI is an advanced agentic AI framework designed to surpass existing solution
 - **Advanced Memory Systems** with multiple memory types (short-term, long-term, episodic, semantic, procedural)
 - **No-Code Studio (Enterprise)** for visual workflow building
 - **50+ Built-in Tools** for web, database, file, computation, and communication tasks
-- **Enterprise Features** including observability, security, and scalability
+- **Enterprise-Grade Features (OSS)** including observability, security, connectors, and scalability
 
-> **Open Source vs Enterprise**: This repository contains the **MIT-licensed core framework**. The
-> enterprise Studio and related enterprise features have been moved to `enterprise/` as a staging
-> area for a separate commercial repo.
+> **Open Source vs Enterprise**: This repository contains the **MIT-licensed core framework** plus
+> enterprise-grade runtime features (connectors, triggers, observability, security, CLI extensions).
+> The **Studio UI** remains enterprise-only and is staged under `enterprise/` for a separate
+> commercial repo.
 
 ## 🧩 Applications
 
@@ -27,12 +28,17 @@ GenXAI is an advanced agentic AI framework designed to surpass existing solution
 
 ## ✅ OSS vs Enterprise
 
-**Open-source (MIT) core** — use these for OSS releases:
+**Open-source (MIT) core + enterprise-grade runtime** — available in OSS:
 - `genxai/` (agents, graph engine, flows, tools, LLM providers)
+- `genxai/connectors` (Kafka, SQS, Postgres CDC, webhooks, Slack, GitHub, Jira, Notion, Google Workspace)
+- `genxai/triggers` (webhook, schedule, queue triggers)
+- `genxai/observability` (logging, metrics, tracing)
+- `genxai/security` (RBAC, policy engine, audit, rate limits)
+- CLI commands: `tool`, `workflow`, `connector`, `metrics`, `approval`, `audit`
 - `examples/`, `docs/`, `tests/`, `scripts/`
 
-**Enterprise (commercial) features** — keep in the enterprise repo:
-- `enterprise/` (Studio UI/backend, enterprise CLI extensions, connectors, triggers, security, observability, metrics)
+**Enterprise (commercial) features** — remain in the enterprise repo:
+- `enterprise/` (Studio UI/backend + Studio-only assets)
 
 ---
 
@@ -72,17 +78,17 @@ enterprise/studio/
 
 They are intended for the **enterprise repo** and are **not part of the MIT-licensed core**.
 
-### ⚡ Trigger SDK (Enterprise)
-Trigger SDKs are part of the enterprise edition and live under `enterprise/`.
+### ⚡ Trigger SDK (OSS)
+Trigger SDKs are part of the OSS runtime and live under `genxai/triggers`.
 
-### 🏢 Enterprise-Ready (Enterprise Edition)
+### 🏢 Enterprise-Ready (OSS Runtime)
 - **Observability**: Logging, metrics, tracing
 - **Security**: RBAC, encryption, guardrails
 - **Scalability**: Horizontal scaling, distributed execution
 - **Reliability**: 99.9% uptime target
 
-### 📈 Metrics API (Enterprise)
-Observability endpoints are part of the enterprise edition and live under `enterprise/`.
+### 📈 Metrics API (OSS Runtime)
+Observability endpoints are part of the OSS runtime and live under `genxai/observability`.
 
 ---
 
@@ -95,6 +101,23 @@ Comprehensive documentation is available in the following files:
 - **[IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md)** - Development roadmap
 - **[TOOLS_DESIGN.md](./TOOLS_DESIGN.md)** - Tool system architecture and 50+ built-in tools
 - **[MEMORY_DESIGN.md](./MEMORY_DESIGN.md)** - Multi-layered memory system design
+- **[WORKFLOW_COMPOSITION.md](./docs/WORKFLOW_COMPOSITION.md)** - Composing global workflows with subflows
+- **[COMPARISON.md](./docs/COMPARISON.md)** - CrewAI vs GenXAI comparison guide
+- **[COMPARISON_CHEATSHEET.md](./docs/COMPARISON_CHEATSHEET.md)** - Condensed comparison cheatsheet
+- **[COMPARISON_SLIDES.md](./docs/COMPARISON_SLIDES.md)** - Slide-style outline for presentations
+
+### 🖼️ Workflow Composition Preview
+
+For a visual overview of composing global workflows with subflows and deterministic routing,
+see **[docs/WORKFLOW_COMPOSITION.md](./docs/WORKFLOW_COMPOSITION.md)**.
+
+![Workflow composition diagram](./docs/diagrams/workflow_composition.svg)
+
+_Figure: Global workflow routing to two subflows (SVG preview)._ 
+
+![Workflow composition diagram (PNG)](./docs/diagrams/workflow_composition.png)
+
+_Figure: PNG preview for environments that don’t render SVG._
 
 ---
 
@@ -304,9 +327,7 @@ See runnable examples in:
 
 Full flow documentation: [docs/FLOWS.md](./docs/FLOWS.md)
 
-### Trigger SDK Quick Start (Enterprise)
-
-> This example requires the enterprise repository.
+### Trigger SDK Quick Start (OSS)
 
 ```python
 from genxai.triggers import WebhookTrigger
@@ -341,7 +362,20 @@ pip install "genxai-framework[llm,tools,api]"
 pip install "genxai-framework[all]"
 ```
 
-> For the enterprise Studio, use the enterprise repository and its commercial license.
+> For the Studio UI, use the enterprise repository and its commercial license.
+
+---
+
+## 🧩 OSS Enterprise Features (Studio Excluded)
+
+The following enterprise-grade capabilities are **included in OSS**:
+
+- **Connectors**: Kafka, SQS, Postgres CDC, Webhooks, Slack, GitHub, Notion, Jira, Google Workspace
+- **Triggers**: Webhook, schedule, and queue triggers
+- **Observability**: logging, metrics, tracing, alerts
+- **Security**: RBAC, policy engine, audit logging, rate limits, PII utilities
+- **CLI Extensions**: metrics, connector, approval, audit commands
+- **Worker Queue Engine**: distributed execution support
 
 ---
 

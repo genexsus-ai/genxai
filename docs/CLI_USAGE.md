@@ -1,7 +1,7 @@
 # GenXAI CLI
 
-The GenXAI CLI is available in the **OSS core** and can be extended by the
-enterprise edition.
+The GenXAI CLI is available in the **OSS core** and includes enterprise-grade
+runtime commands (connectors, metrics, approvals, audit) out of the box.
 
 ## OSS vs Enterprise CLI model
 
@@ -9,9 +9,8 @@ enterprise edition.
   - `genxai tool ...`
   - `genxai workflow ...`
 
-- **Enterprise** adds additional command groups (metrics, connectors, approvals,
-  audit) by registering a CLI plugin via the `genxai.cli_plugins` entry-point
-  group.
+- **OSS** includes additional command groups (metrics, connectors, approvals,
+  audit) alongside the core `tool` and `workflow` commands.
 
 ## Installation
 
@@ -29,17 +28,10 @@ pip install "genxai[llm,tools,api]"
 pip install "genxai[all]"
 ```
 
-### Enterprise install (concept)
+### Studio-only CLI note
 
-In the private enterprise distribution, register:
-
-```toml
-[project.entry-points."genxai.cli_plugins"]
-enterprise = "enterprise.cli.plugin:plugin_commands"
-```
-
-After installing the enterprise package, `genxai --help` will also show
-enterprise-only command groups.
+The Studio UI remains enterprise-only. The OSS CLI focuses on runtime
+operations and does not require Studio.
 
 ## Tool Management Commands
 
@@ -186,7 +178,6 @@ genxai tool import-tool ./tool.json
 Start the metrics API server (non-Studio) to expose Prometheus metrics:
 
 ```bash
-Enterprise metrics command (enterprise repo):
 genxai metrics serve --host 0.0.0.0 --port 8001
 ```
 

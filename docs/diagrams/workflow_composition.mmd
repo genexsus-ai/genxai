@@ -1,0 +1,44 @@
+graph LR
+    input(["input\n[input]"])
+    route{{route\n[condition]}}
+    support_subflow["support_subflow\n[subgraph]"]
+    sales_subflow["sales_subflow\n[subgraph]"]
+    fallback_subflow["fallback_subflow\n[subgraph]"]
+    read_file["read_file\n[tool]"]
+    fetch_url["fetch_url\n[tool]"]
+    validate_url["validate_url\n[tool]"]
+    write_file["write_file\n[tool]"]
+    query_db["query_db\n[tool]"]
+    retry_checks["retry_checks\n[loop]"]
+    send_email["send_email\n[tool]"]
+    notify_slack["notify_slack\n[tool]"]
+    call_webhook["call_webhook\n[tool]"]
+    router_agent["router_agent\n[agent]"]
+    post_route{{post_route\n[condition]}}
+    archive_report["archive_report\n[tool]"]
+    escalate_ticket["escalate_ticket\n[tool]"]
+    output(["output\n[output]"])
+
+    input --> route
+    route -->|conditional| support_subflow
+    route -->|conditional| sales_subflow
+    route -->|conditional| fallback_subflow
+    support_subflow --> read_file
+    sales_subflow --> read_file
+    fallback_subflow --> read_file
+    read_file --> fetch_url
+    fetch_url --> validate_url
+    validate_url --> write_file
+    write_file --> query_db
+    query_db --> retry_checks
+    retry_checks -->|conditional| query_db
+    retry_checks --> send_email
+    send_email -.parallel.-> notify_slack
+    send_email -.parallel.-> call_webhook
+    notify_slack --> router_agent
+    call_webhook --> router_agent
+    router_agent --> post_route
+    post_route -->|conditional| archive_report
+    post_route -->|conditional| escalate_ticket
+    archive_report --> output
+    escalate_ticket --> output

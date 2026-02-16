@@ -1,0 +1,149 @@
+groups:
+  - name: genxai_alerts
+    interval: 30s
+    rules:
+      # Agent Alerts
+      - alert: HighAgentErrorRate
+        expr: rate(genxai_agent_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: agent
+        annotations:
+          summary: "High agent error rate detected"
+          description: "Agent {{ $labels.agent_id }} has error rate of {{ $value }} errors/sec"
+          
+      - alert: SlowAgentExecution
+        expr: histogram_quantile(0.95, rate(genxai_agent_execution_duration_seconds_bucket[5m])) > 30
+        for: 10m
+        labels:
+          severity: warning
+          component: agent
+        annotations:
+          summary: "Agent execution is slow"
+          description: "Agent {{ $labels.agent_id }} p95 execution time is {{ $value }}s (threshold: 30s)"
+          
+      - alert: NoAgentActivity
+        expr: rate(genxai_agent_executions_total[10m]) == 0
+        for: 15m
+        labels:
+          severity: info
+          component: agent
+        annotations:
+          summary: "No agent activity detected"
+          description: "No agent executions in the last 15 minutes"
+      
+      # LLM Alerts
+      - alert: HighLLMCost
+        expr: rate(genxai_llm_cost_total[1h]) > 10
+        for: 1h
+        labels:
+          severity: critical
+          component: llm
+        annotations:
+          summary: "LLM costs are high"
+          description: "LLM cost rate is ${{ $value }}/hour for {{ $labels.provider }}/{{ $labels.model }}"
+          
+      - alert: HighLLMErrorRate
+        expr: rate(genxai_llm_requests_total{status="error"}[5m]) / rate(genxai_llm_requests_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          component: llm
+        annotations:
+          summary: "High LLM error rate"
+          description: "LLM {{ $labels.provider }}/{{ $labels.model }} error rate is {{ $value | humanizePercentage }}"
+          
+      - alert: HighTokenUsage
+        expr: rate(genxai_llm_tokens_total[5m]) > 100000
+        for: 10m
+        labels:
+          severity: warning
+          component: llm
+        annotations:
+          summary: "High token usage detected"
+          description: "Token usage rate is {{ $value }} tokens/sec for {{ $labels.provider }}/{{ $labels.model }}"
+      
+      # Tool Alerts
+      - alert: HighToolErrorRate
+        expr: rate(genxai_tool_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: tool
+        annotations:
+          summary: "High tool error rate"
+          description: "Tool {{ $labels.tool_name }} has error rate of {{ $value }} errors/sec"
+          
+      - alert: SlowToolExecution
+        expr: histogram_quantile(0.95, rate(genxai_tool_execution_duration_seconds_bucket[5m])) > 10
+        for: 10m
+        labels:
+          severity: warning
+          component: tool
+        annotations:
+          summary: "Tool execution is slow"
+          description: "Tool {{ $labels.tool_name }} p95 execution time is {{ $value }}s (threshold: 10s)"
+      
+      # Memory Alerts
+      - alert: HighMemoryOperationLatency
+        expr: histogram_quantile(0.95, rate(genxai_memory_operation_duration_seconds_bucket[5m])) > 1
+        for: 10m
+        labels:
+          severity: warning
+          component: memory
+        annotations:
+          summary: "High memory operation latency"
+          description: "Memory {{ $labels.memory_type }} {{ $labels.operation_type }} p95 latency is {{ $value }}s"
+          
+      - alert: MemoryOperationErrors
+        expr: rate(genxai_memory_operations_total{status="error"}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          component: memory
+        annotations:
+          summary: "Memory operation errors detected"
+          description: "Memory {{ $labels.memory_type }} has error rate of {{ $value }} errors/sec"
+      
+      # Workflow Alerts
+      - alert: WorkflowExecutionFailures
+        expr: rate(genxai_workflow_executions_total{status="error"}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: workflow
+        annotations:
+          summary: "Workflow execution failures"
+          description: "Workflow {{ $labels.workflow_id }} has failure rate of {{ $value }} failures/sec"
+          
+      - alert: SlowWorkflowExecution
+        expr: histogram_quantile(0.95, rate(genxai_workflow_execution_duration_seconds_bucket[5m])) > 300
+        for: 10m
+        labels:
+          severity: warning
+          component: workflow
+        annotations:
+          summary: "Workflow execution is slow"
+          description: "Workflow {{ $labels.workflow_id }} p95 execution time is {{ $value }}s (threshold: 300s)"
+      
+      # System Alerts
+      - alert: HighOverallErrorRate
+        expr: (rate(genxai_agent_errors_total[5m]) + rate(genxai_tool_errors_total[5m])) > 1
+        for: 5m
+        labels:
+          severity: critical
+          component: system
+        annotations:
+          summary: "High overall error rate"
+          description: "System-wide error rate is {{ $value }} errors/sec"
+          
+      - alert: LowSuccessRate
+        expr: sum(rate(genxai_agent_executions_total{status="success"}[5m])) / sum(rate(genxai_agent_executions_total[5m])) < 0.95
+        for: 10m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "Low success rate"
+          description: "System success rate is {{ $value | humanizePercentage }} (threshold: 95%)"

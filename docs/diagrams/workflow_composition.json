@@ -1,0 +1,275 @@
+{
+  "name": "global_orchestrator",
+  "nodes": [
+    {
+      "id": "input",
+      "type": "input",
+      "config": {}
+    },
+    {
+      "id": "route",
+      "type": "condition",
+      "config": {
+        "condition": "route_rule"
+      }
+    },
+    {
+      "id": "support_subflow",
+      "type": "subgraph",
+      "config": {
+        "workflow_id": "support_subflow"
+      }
+    },
+    {
+      "id": "sales_subflow",
+      "type": "subgraph",
+      "config": {
+        "workflow_id": "sales_subflow"
+      }
+    },
+    {
+      "id": "fallback_subflow",
+      "type": "subgraph",
+      "config": {
+        "workflow_id": "fallback_subflow"
+      }
+    },
+    {
+      "id": "read_file",
+      "type": "tool",
+      "config": {
+        "tool_name": "file_reader"
+      }
+    },
+    {
+      "id": "fetch_url",
+      "type": "tool",
+      "config": {
+        "tool_name": "api_caller"
+      }
+    },
+    {
+      "id": "validate_url",
+      "type": "tool",
+      "config": {
+        "tool_name": "url_validator"
+      }
+    },
+    {
+      "id": "write_file",
+      "type": "tool",
+      "config": {
+        "tool_name": "file_writer"
+      }
+    },
+    {
+      "id": "query_db",
+      "type": "tool",
+      "config": {
+        "tool_name": "sql_query"
+      }
+    },
+    {
+      "id": "retry_checks",
+      "type": "loop",
+      "config": {
+        "condition": "retry_needed",
+        "max_iterations": 2
+      }
+    },
+    {
+      "id": "send_email",
+      "type": "tool",
+      "config": {
+        "tool_name": "email_sender"
+      }
+    },
+    {
+      "id": "notify_slack",
+      "type": "tool",
+      "config": {
+        "tool_name": "slack_notifier"
+      }
+    },
+    {
+      "id": "call_webhook",
+      "type": "tool",
+      "config": {
+        "tool_name": "webhook_caller"
+      }
+    },
+    {
+      "id": "router_agent",
+      "type": "agent",
+      "config": {
+        "agent_id": "router_agent"
+      }
+    },
+    {
+      "id": "post_route",
+      "type": "condition",
+      "config": {
+        "condition": "post_action"
+      }
+    },
+    {
+      "id": "archive_report",
+      "type": "tool",
+      "config": {
+        "tool_name": "file_writer"
+      }
+    },
+    {
+      "id": "escalate_ticket",
+      "type": "tool",
+      "config": {
+        "tool_name": "email_sender"
+      }
+    },
+    {
+      "id": "output",
+      "type": "output",
+      "config": {}
+    }
+  ],
+  "edges": [
+    {
+      "source": "input",
+      "target": "route",
+      "condition": null,
+      "parallel": false
+    },
+    {
+      "source": "route",
+      "target": "support_subflow",
+      "condition": "<lambda>",
+      "parallel": false
+    },
+    {
+      "source": "route",
+      "target": "sales_subflow",
+      "condition": "<lambda>",
+      "parallel": false
+    },
+    {
+      "source": "route",
+      "target": "fallback_subflow",
+      "condition": "<lambda>",
+      "parallel": false
+    },
+    {
+      "source": "support_subflow",
+      "target": "read_file",
+      "condition": null,
+      "parallel": false
+    },
+    {
+      "source": "sales_subflow",
+      "target": "read_file",
+      "condition": null,
+      "parallel": false
+    },
+    {
+      "source": "fallback_subflow",
+      "target": "read_file",
+      "condition": null,
+      "parallel": false
+    },
+    {
+      "source": "read_file",
+      "target": "fetch_url",
+      "condition": null,
+      "parallel": false
+    },
+    {
+      "source": "fetch_url",
+      "target": "validate_url",
+      "condition": null,
+      "parallel": false
+    },
+    {
+      "source": "validate_url",
+      "target": "write_file",
+      "condition": null,
+      "parallel": false
+    },
+    {
+      "source": "write_file",
+      "target": "query_db",
+      "condition": null,
+      "parallel": false
+    },
+    {
+      "source": "query_db",
+      "target": "retry_checks",
+      "condition": null,
+      "parallel": false
+    },
+    {
+      "source": "retry_checks",
+      "target": "query_db",
+      "condition": "<lambda>",
+      "parallel": false
+    },
+    {
+      "source": "retry_checks",
+      "target": "send_email",
+      "condition": null,
+      "parallel": false
+    },
+    {
+      "source": "send_email",
+      "target": "notify_slack",
+      "condition": null,
+      "parallel": true
+    },
+    {
+      "source": "send_email",
+      "target": "call_webhook",
+      "condition": null,
+      "parallel": true
+    },
+    {
+      "source": "notify_slack",
+      "target": "router_agent",
+      "condition": null,
+      "parallel": false
+    },
+    {
+      "source": "call_webhook",
+      "target": "router_agent",
+      "condition": null,
+      "parallel": false
+    },
+    {
+      "source": "router_agent",
+      "target": "post_route",
+      "condition": null,
+      "parallel": false
+    },
+    {
+      "source": "post_route",
+      "target": "archive_report",
+      "condition": "<lambda>",
+      "parallel": false
+    },
+    {
+      "source": "post_route",
+      "target": "escalate_ticket",
+      "condition": "<lambda>",
+      "parallel": false
+    },
+    {
+      "source": "archive_report",
+      "target": "output",
+      "condition": null,
+      "parallel": false
+    },
+    {
+      "source": "escalate_ticket",
+      "target": "output",
+      "condition": null,
+      "parallel": false
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+digraph "global_orchestrator" {
+    rankdir=LR;
+    node [fontname=Arial, fontsize=10];
+    edge [fontname=Arial, fontsize=9];
+
+    input [label="input\n[input]", shape=ellipse, style=filled, fillcolor=lightblue];
+    route [label="route\n[condition]", shape=diamond, style=filled, fillcolor=lightyellow];
+    support_subflow [label="support_subflow\n[subgraph]", shape=box3d, style=filled, fillcolor=lavender];
+    sales_subflow [label="sales_subflow\n[subgraph]", shape=box3d, style=filled, fillcolor=lavender];
+    fallback_subflow [label="fallback_subflow\n[subgraph]", shape=box3d, style=filled, fillcolor=lavender];
+    read_file [label="read_file\n[tool]", shape=box, style=filled, fillcolor=lightgray];
+    fetch_url [label="fetch_url\n[tool]", shape=box, style=filled, fillcolor=lightgray];
+    validate_url [label="validate_url\n[tool]", shape=box, style=filled, fillcolor=lightgray];
+    write_file [label="write_file\n[tool]", shape=box, style=filled, fillcolor=lightgray];
+    query_db [label="query_db\n[tool]", shape=box, style=filled, fillcolor=lightgray];
+    retry_checks [label="retry_checks\n[loop]", shape=box];
+    send_email [label="send_email\n[tool]", shape=box, style=filled, fillcolor=lightgray];
+    notify_slack [label="notify_slack\n[tool]", shape=box, style=filled, fillcolor=lightgray];
+    call_webhook [label="call_webhook\n[tool]", shape=box, style=filled, fillcolor=lightgray];
+    router_agent [label="router_agent\n[agent]", shape=box, style="rounded,filled", fillcolor=lightcoral];
+    post_route [label="post_route\n[condition]", shape=diamond, style=filled, fillcolor=lightyellow];
+    archive_report [label="archive_report\n[tool]", shape=box, style=filled, fillcolor=lightgray];
+    escalate_ticket [label="escalate_ticket\n[tool]", shape=box, style=filled, fillcolor=lightgray];
+    output [label="output\n[output]", shape=ellipse, style=filled, fillcolor=lightgreen];
+
+    input -> route;
+    route -> support_subflow [label="conditional", style=dashed];
+    route -> sales_subflow [label="conditional", style=dashed];
+    route -> fallback_subflow [label="conditional", style=dashed];
+    support_subflow -> read_file;
+    sales_subflow -> read_file;
+    fallback_subflow -> read_file;
+    read_file -> fetch_url;
+    fetch_url -> validate_url;
+    validate_url -> write_file;
+    write_file -> query_db;
+    query_db -> retry_checks;
+    retry_checks -> query_db [label="conditional", style=dashed];
+    retry_checks -> send_email;
+    send_email -> notify_slack [label="parallel", color=blue];
+    send_email -> call_webhook [label="parallel", color=blue];
+    notify_slack -> router_agent;
+    call_webhook -> router_agent;
+    router_agent -> post_route;
+    post_route -> archive_report [label="conditional", style=dashed];
+    post_route -> escalate_ticket [label="conditional", style=dashed];
+    archive_report -> output;
+    escalate_ticket -> output;
+}

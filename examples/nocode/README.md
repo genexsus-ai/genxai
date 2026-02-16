@@ -17,9 +17,12 @@ new workflows.
    - Research → Draft → Edit pipeline
 3. **Data Validation Pipeline** (`data_pipeline.yaml`)
    - Validate, transform, and output structured data
-4. **User Proxy Workflow** (`user_proxy_workflow.yaml`)
+4. **Workflow Composition (Global + Subflows)** (`workflow_composition.yaml`)
+   - Deterministic routing to subflows inside a global workflow
+   - Diagram: `docs/diagrams/workflow_composition.svg`
+5. **User Proxy Workflow** (`user_proxy_workflow.yaml`)
    - Collect human input via a tool step before the assistant agent runs
-5. **Shared Memory Workflow** (`shared_memory_workflow.yaml`)
+6. **Shared Memory Workflow** (`shared_memory_workflow.yaml`)
    - Demonstrates shared memory enabled across agents
 
 ## How to Use

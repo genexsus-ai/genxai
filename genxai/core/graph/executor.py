@@ -333,19 +333,23 @@ class WorkflowExecutor:
             source = edge.get("source")
             target = edge.get("target")
             condition = edge.get("condition")
+            parallel = edge.get("parallel", False)
 
             if condition:
                 # Conditional edge
-                graph.add_edge(
-                    ConditionalEdge(
-                        source=source,
-                        target=target,
-                        condition=lambda state, cond=condition: self._evaluate_condition(state, cond),
-                    )
+                edge_obj = ConditionalEdge(
+                    source=source,
+                    target=target,
+                    condition=lambda state, cond=condition: self._evaluate_condition(state, cond),
                 )
             else:
                 # Regular edge
-                graph.add_edge(Edge(source=source, target=target))
+                edge_obj = Edge(source=source, target=target)
+
+            if parallel:
+                edge_obj.metadata["parallel"] = True
+
+            graph.add_edge(edge_obj)
 
         return graph
 

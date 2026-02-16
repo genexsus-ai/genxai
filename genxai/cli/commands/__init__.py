@@ -1,8 +1,8 @@
-"""OSS CLI command groups."""
+"""CLI commands for GenXAI."""
 
-from __future__ import annotations
+from .tool import tool
+from .metrics import metrics
+from .connector import connector
+from .workflow import workflow
 
-from genxai.cli.commands.tool import tool
-from genxai.cli.commands.workflow import workflow
-
-__all__ = ["tool", "workflow"]
+__all__ = ["tool", "metrics", "connector", "workflow"]

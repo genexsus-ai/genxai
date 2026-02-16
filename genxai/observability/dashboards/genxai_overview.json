@@ -1,0 +1,144 @@
+{
+  "dashboard": {
+    "title": "GenXAI Overview",
+    "tags": ["genxai", "agents", "llm"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 0,
+    "refresh": "30s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Agent Execution Rate",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "rate(genxai_agent_executions_total[5m])",
+            "legendFormat": "{{agent_id}} - {{status}}"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Agent Success Rate",
+        "type": "stat",
+        "gridPos": {"x": 12, "y": 0, "w": 6, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(rate(genxai_agent_executions_total{status=\"success\"}[5m])) / sum(rate(genxai_agent_executions_total[5m])) * 100",
+            "legendFormat": "Success Rate %"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Active Agents",
+        "type": "stat",
+        "gridPos": {"x": 18, "y": 0, "w": 6, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(genxai_agent_active_executions)",
+            "legendFormat": "Active"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Agent Execution Duration (p50, p95, p99)",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, rate(genxai_agent_execution_duration_seconds_bucket[5m]))",
+            "legendFormat": "p50"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(genxai_agent_execution_duration_seconds_bucket[5m]))",
+            "legendFormat": "p95"
+          },
+          {
+            "expr": "histogram_quantile(0.99, rate(genxai_agent_execution_duration_seconds_bucket[5m]))",
+            "legendFormat": "p99"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Tool Usage by Tool Name",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "rate(genxai_tool_calls_total[5m])",
+            "legendFormat": "{{tool_name}}"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "LLM Token Usage",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "rate(genxai_llm_tokens_total[5m])",
+            "legendFormat": "{{provider}} - {{model}} - {{token_type}}"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "LLM Cost (Cumulative)",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "genxai_llm_cost_total",
+            "legendFormat": "{{provider}} - {{model}}"
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "title": "Memory Operations Rate",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 24, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "rate(genxai_memory_operations_total[5m])",
+            "legendFormat": "{{operation_type}} - {{memory_type}}"
+          }
+        ]
+      },
+      {
+        "id": 9,
+        "title": "Workflow Executions",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 24, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "rate(genxai_workflow_executions_total[5m])",
+            "legendFormat": "{{workflow_id}} - {{status}}"
+          }
+        ]
+      },
+      {
+        "id": 10,
+        "title": "Error Rate",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 32, "w": 24, "h": 8},
+        "targets": [
+          {
+            "expr": "rate(genxai_agent_errors_total[5m])",
+            "legendFormat": "Agent Errors - {{error_type}}"
+          },
+          {
+            "expr": "rate(genxai_tool_errors_total[5m])",
+            "legendFormat": "Tool Errors - {{error_type}}"
+          }
+        ]
+      }
+    ]
+  }
+}
