@@ -95,6 +95,80 @@ button.danger {
   gap: 0.5rem;
 }
 
+.row.spread {
+  justify-content: space-between;
+  align-items: center;
+}
+
+.metrics-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.metric-card {
+  border: 1px solid #dbeafe;
+  background: #f8fbff;
+  border-radius: 0.6rem;
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.metric-label {
+  color: #1f2937;
+  font-size: 0.8rem;
+}
+
+.metric-value {
+  color: #111827;
+  font-size: 1.15rem;
+}
+
+.metrics-columns {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.metrics-columns h3 {
+  margin: 0 0 0.35rem;
+}
+
+.metrics-columns ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.log-stream {
+  max-height: 280px;
+  overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  padding: 0.6rem;
+  background: #fafafa;
+}
+
+.log-stream ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.diff-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 0.75rem;
+}
+
+.diff-grid h4 {
+  margin: 0 0 0.35rem;
+  color: #1f2937;
+}
+
 pre,
 code {
   background: #f9fafb;

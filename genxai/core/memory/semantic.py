@@ -2,6 +2,7 @@
 
 from typing import Any, Dict, List, Optional, Set, Tuple
 from datetime import datetime
+import json
 import logging
 import uuid
 
@@ -467,6 +468,56 @@ class SemanticMemory:
             self._predicate_index.setdefault(fact.predicate, set()).add(fact.id)
             self._object_index.setdefault(fact.object, set()).add(fact.id)
 
+    def _materialize_fact(self, fact: Fact) -> None:
+        self._facts[fact.id] = fact
+        self._subject_index.setdefault(fact.subject, set()).add(fact.id)
+        self._predicate_index.setdefault(fact.predicate, set()).add(fact.id)
+        self._object_index.setdefault(fact.object, set()).add(fact.id)
+
+    def _decode_metadata(self, value: Any) -> Dict[str, Any]:
+        if value is None:
+            return {}
+        if isinstance(value, str):
+            try:
+                decoded = json.loads(value)
+                return decoded if isinstance(decoded, dict) else {}
+            except Exception:
+                return {}
+        return value if isinstance(value, dict) else {}
+
+    def _fact_from_graph_payload(self, payload: Dict[str, Any]) -> Fact:
+        return Fact(
+            id=str(payload.get("id", "")),
+            subject=str(payload.get("subject", "")),
+            predicate=str(payload.get("predicate", "")),
+            object=str(payload.get("object", "")),
+            confidence=float(payload.get("confidence", 1.0)),
+            source=payload.get("source"),
+            timestamp=datetime.fromisoformat(str(payload.get("timestamp"))) if payload.get("timestamp") else None,
+            metadata=self._decode_metadata(payload.get("metadata_json")),
+        )
+
+    def _records_to_facts(self, records: Any) -> List[Fact]:
+        facts: List[Fact] = []
+        for record in records:
+            if isinstance(record, dict):
+                node = record.get("f") or record
+            else:
+                try:
+                    node = record.get("f")
+                except Exception:
+                    node = None
+            if not node:
+                continue
+            payload = dict(node)
+            try:
+                fact = self._fact_from_graph_payload(payload)
+            except Exception:
+                continue
+            self._materialize_fact(fact)
+            facts.append(fact)
+        return facts
+
     async def _find_exact_fact(
         self,
         subject: str,
@@ -482,20 +533,58 @@ class SemanticMemory:
         return None
 
     async def _store_in_graph(self, fact: Fact) -> None:
-        """Store fact in graph database (placeholder)."""
-        # TODO: Implement Neo4j storage
-        logger.warning("Graph database storage not yet implemented")
-        # Fallback to in-memory
-        self._facts[fact.id] = fact
+        """Store fact in graph database."""
+        try:
+            query = """
+            MERGE (f:Fact {id: $id})
+            SET f.subject = $subject,
+                f.predicate = $predicate,
+                f.object = $object,
+                f.confidence = $confidence,
+                f.source = $source,
+                f.timestamp = $timestamp,
+                f.metadata_json = $metadata_json
+            """
+            with self._graph_db.session() as session:
+                session.run(
+                    query,
+                    id=fact.id,
+                    subject=fact.subject,
+                    predicate=fact.predicate,
+                    object=fact.object,
+                    confidence=fact.confidence,
+                    source=fact.source,
+                    timestamp=fact.timestamp.isoformat(),
+                    metadata_json=json.dumps(fact.metadata, default=str),
+                )
+        except Exception as exc:
+            logger.warning("Failed graph fact storage, fallback to in-memory: %s", exc)
+
+        self._materialize_fact(fact)
 
     async def _retrieve_by_subject_from_graph(
         self,
         subject: str,
         predicate: Optional[str],
     ) -> List[Fact]:
-        """Retrieve from graph database (placeholder)."""
-        # TODO: Implement Neo4j query
-        return await self.retrieve_by_subject(subject, predicate)
+        """Retrieve facts by subject from graph database."""
+        try:
+            query = """
+            MATCH (f:Fact {subject: $subject})
+            WHERE ($predicate IS NULL OR f.predicate = $predicate)
+            RETURN f
+            """
+            with self._graph_db.session() as session:
+                records = list(session.run(query, subject=subject, predicate=predicate))
+            return self._records_to_facts(records)
+        except Exception as exc:
+            logger.warning("Failed graph subject query, fallback to in-memory: %s", exc)
+
+        fact_ids = self._subject_index.get(subject, set())
+        facts = [self._facts[fid] for fid in fact_ids]
+        if predicate:
+            facts = [f for f in facts if f.predicate == predicate]
+        return facts
 
     async def _retrieve_by_predicate_from_graph(
         self,
@@ -503,18 +592,58 @@ class SemanticMemory:
         subject: Optional[str],
         object: Optional[str],
     ) -> List[Fact]:
-        """Retrieve from graph database (placeholder)."""
-        # TODO: Implement Neo4j query
-        return await self.retrieve_by_predicate(predicate, subject, object)
+        """Retrieve facts by predicate from graph database."""
+        try:
+            query = """
+            MATCH (f:Fact {predicate: $predicate})
+            WHERE ($subject IS NULL OR f.subject = $subject)
+              AND ($object IS NULL OR f.object = $object)
+            RETURN f
+            """
+            with self._graph_db.session() as session:
+                records = list(
+                    session.run(
+                        query,
+                        predicate=predicate,
+                        subject=subject,
+                        object=object,
+                    )
+                )
+            return self._records_to_facts(records)
+        except Exception as exc:
+            logger.warning("Failed graph predicate query, fallback to in-memory: %s", exc)
+
+        fact_ids = self._predicate_index.get(predicate, set())
+        facts = [self._facts[fid] for fid in fact_ids]
+        if subject:
+            facts = [f for f in facts if f.subject == subject]
+        if object:
+            facts = [f for f in facts if f.object == object]
+        return facts
 
     async def _retrieve_by_object_from_graph(
         self,
         object: str,
         predicate: Optional[str],
     ) -> List[Fact]:
-        """Retrieve from graph database (placeholder)."""
-        # TODO: Implement Neo4j query
-        return await self.retrieve_by_object(object, predicate)
+        """Retrieve facts by object from graph database."""
+        try:
+            query = """
+            MATCH (f:Fact {object: $object})
+            WHERE ($predicate IS NULL OR f.predicate = $predicate)
+            RETURN f
+            """
+            with self._graph_db.session() as session:
+                records = list(session.run(query, object=object, predicate=predicate))
+            return self._records_to_facts(records)
+        except Exception as exc:
+            logger.warning("Failed graph object query, fallback to in-memory: %s", exc)
+
+        fact_ids = self._object_index.get(object, set())
+        facts = [self._facts[fid] for fid in fact_ids]
+        if predicate:
+            facts = [f for f in facts if f.predicate == predicate]
+        return facts
 
     def __len__(self) -> int:
         """Get number of stored facts."""

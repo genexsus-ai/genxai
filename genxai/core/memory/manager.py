@@ -39,6 +39,8 @@ class MemorySystem:
         config: Optional[MemoryConfig] = None,
         vector_store_backend: Optional[str] = None,
         embedding_provider: Optional[str] = None,
+        redis_client: Optional[Any] = None,
+        graph_db: Optional[Any] = None,
         persistence_enabled: bool = False,
         persistence_path: Optional[Path] = None,
         persistence_backend: str = "json",
@@ -96,6 +98,7 @@ class MemorySystem:
                 # Initialize long-term memory
                 self.long_term = LongTermMemory(
                     config=self.config,
+                    redis_client=redis_client,
                     vector_store=self.vector_store,
                     embedding_service=self.embedding_service,
                     persistence=self._persistence,
@@ -105,19 +108,20 @@ class MemorySystem:
                 logger.warning(f"Failed to initialize long-term memory: {e}")
                 self.long_term = LongTermMemory(
                     config=self.config,
+                    redis_client=redis_client,
                     persistence=self._persistence,
                 )
 
         # Initialize episodic memory
         self.episodic: Optional[EpisodicMemory] = None
         if self.config.episodic_enabled:
-            self.episodic = EpisodicMemory(persistence=self._persistence)
+            self.episodic = EpisodicMemory(graph_db=graph_db, persistence=self._persistence)
             logger.info("Episodic memory initialized")
 
         # Initialize semantic memory
         self.semantic: Optional[SemanticMemory] = None
         if self.config.semantic_enabled:
-            self.semantic = SemanticMemory(persistence=self._persistence)
+            self.semantic = SemanticMemory(graph_db=graph_db, persistence=self._persistence)
             logger.info("Semantic memory initialized")
 
         # Initialize procedural memory

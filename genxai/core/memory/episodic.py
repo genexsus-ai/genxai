@@ -2,6 +2,7 @@
 
 from typing import Any, Dict, List, Optional
 from datetime import datetime
+import json
 import logging
 import uuid
 
@@ -281,6 +282,34 @@ class EpisodicMemory:
         Returns:
             Success rate (0.0 to 1.0)
         """
+        if self._use_graph:
+            try:
+                query = """
+                MATCH (e:Episode)
+                WHERE ($agent_id IS NULL OR e.agent_id = $agent_id)
+                  AND ($task_pattern IS NULL OR toLower(e.task) CONTAINS toLower($task_pattern))
+                RETURN e.success AS success
+                """
+                with self._graph_db.session() as session:
+                    records = list(
+                        session.run(
+                            query,
+                            agent_id=agent_id,
+                            task_pattern=task_pattern,
+                        )
+                    )
+                if records:
+                    successes = 0
+                    total = 0
+                    for record in records:
+                        value = record.get("success") if hasattr(record, "get") else None
+                        successes += 1 if bool(value) else 0
+                        total += 1
+                    if total > 0:
+                        return successes / total
+            except Exception as exc:
+                logger.warning("Failed graph success-rate query, fallback to in-memory: %s", exc)
+
         episodes = list(self._episodes.values())
 
         # Apply filters
@@ -407,16 +436,94 @@ class EpisodicMemory:
             return
         self._episodes = {item["id"]: Episode.from_dict(item) for item in data}
 
+    def _decode_episode_value(self, value: Any, fallback: Any) -> Any:
+        if value is None:
+            return fallback
+        if isinstance(value, str):
+            try:
+                return json.loads(value)
+            except Exception:
+                return fallback
+        return value
+
+    def _episode_from_graph_payload(self, payload: Dict[str, Any]) -> Episode:
+        return Episode(
+            id=str(payload.get("id", "")),
+            agent_id=str(payload.get("agent_id", "")),
+            task=str(payload.get("task", "")),
+            actions=self._decode_episode_value(payload.get("actions_json"), []),
+            outcome=self._decode_episode_value(payload.get("outcome_json"), {}),
+            timestamp=datetime.fromisoformat(str(payload.get("timestamp"))),
+            duration=float(payload.get("duration", 0.0)),
+            success=bool(payload.get("success", False)),
+            metadata=self._decode_episode_value(payload.get("metadata_json"), {}),
+        )
+
+    def _records_to_episodes(self, records: Any) -> List[Episode]:
+        episodes: List[Episode] = []
+        for record in records:
+            if isinstance(record, dict):
+                node = record.get("e") or record
+            else:
+                try:
+                    node = record.get("e")
+                except Exception:
+                    node = None
+            if not node:
+                continue
+
+            payload = dict(node)
+            try:
+                episode = self._episode_from_graph_payload(payload)
+            except Exception:
+                continue
+            episodes.append(episode)
+            self._episodes[episode.id] = episode
+        return episodes
+
     async def _store_in_graph(self, episode: Episode) -> None:
-        """Store episode in graph database (placeholder)."""
-        # TODO: Implement Neo4j storage
-        logger.warning("Graph database storage not yet implemented")
-        # Fallback to in-memory
+        """Store episode in graph database."""
+        try:
+            query = """
+            MERGE (e:Episode {id: $id})
+            SET e.agent_id = $agent_id,
+                e.task = $task,
+                e.actions_json = $actions_json,
+                e.outcome_json = $outcome_json,
+                e.timestamp = $timestamp,
+                e.duration = $duration,
+                e.success = $success,
+                e.metadata_json = $metadata_json
+            """
+            with self._graph_db.session() as session:
+                session.run(
+                    query,
+                    id=episode.id,
+                    agent_id=episode.agent_id,
+                    task=episode.task,
+                    actions_json=json.dumps(episode.actions, default=str),
+                    outcome_json=json.dumps(episode.outcome, default=str),
+                    timestamp=episode.timestamp.isoformat(),
+                    duration=episode.duration,
+                    success=episode.success,
+                    metadata_json=json.dumps(episode.metadata, default=str),
+                )
+        except Exception as exc:
+            logger.warning("Failed graph episode storage, fallback to in-memory: %s", exc)
+
         self._episodes[episode.id] = episode
 
     async def _retrieve_from_graph(self, episode_id: str) -> Optional[Episode]:
-        """Retrieve episode from graph database (placeholder)."""
-        # TODO: Implement Neo4j retrieval
+        """Retrieve episode from graph database."""
+        try:
+            query = "MATCH (e:Episode {id: $episode_id}) RETURN e LIMIT 1"
+            with self._graph_db.session() as session:
+                records = list(session.run(query, episode_id=episode_id))
+            episodes = self._records_to_episodes(records)
+            if episodes:
+                return episodes[0]
+        except Exception as exc:
+            logger.warning("Failed graph episode retrieval, fallback to in-memory: %s", exc)
         return self._episodes.get(episode_id)
 
     async def _retrieve_by_agent_from_graph(
@@ -425,18 +532,65 @@ class EpisodicMemory:
         limit: int,
         success_only: bool,
     ) -> List[Episode]:
-        """Retrieve episodes from graph database (placeholder)."""
-        # TODO: Implement Neo4j query
-        return await self.retrieve_by_agent(agent_id, limit, success_only)
+        """Retrieve episodes from graph database."""
+        try:
+            query = """
+            MATCH (e:Episode {agent_id: $agent_id})
+            WHERE ($success_only = false OR e.success = true)
+            RETURN e
+            ORDER BY e.timestamp DESC
+            LIMIT $limit
+            """
+            with self._graph_db.session() as session:
+                records = list(
+                    session.run(
+                        query,
+                        agent_id=agent_id,
+                        success_only=success_only,
+                        limit=limit,
+                    )
+                )
+            return self._records_to_episodes(records)
+        except Exception as exc:
+            logger.warning("Failed graph agent query, fallback to in-memory: %s", exc)
+
+        episodes = [ep for ep in self._episodes.values() if ep.agent_id == agent_id]
+        if success_only:
+            episodes = [ep for ep in episodes if ep.success]
+        episodes.sort(key=lambda ep: ep.timestamp, reverse=True)
+        return episodes[:limit]
 
     async def _retrieve_similar_from_graph(
         self,
         task: str,
         limit: int,
     ) -> List[Episode]:
-        """Retrieve similar episodes from graph database (placeholder)."""
-        # TODO: Implement Neo4j similarity query
-        return await self.retrieve_similar_tasks(task, limit)
+        """Retrieve similar episodes from graph database."""
+        keywords = [word.lower() for word in task.split() if word.strip()]
+        if not keywords:
+            return []
+
+        try:
+            query = """
+            MATCH (e:Episode)
+            WHERE any(word IN $keywords WHERE toLower(e.task) CONTAINS word)
+            RETURN e
+            ORDER BY e.success DESC, e.timestamp DESC
+            LIMIT $limit
+            """
+            with self._graph_db.session() as session:
+                records = list(session.run(query, keywords=keywords, limit=limit))
+            return self._records_to_episodes(records)
+        except Exception as exc:
+            logger.warning("Failed graph similarity query, fallback to in-memory: %s", exc)
+
+        episodes = [
+            ep
+            for ep in self._episodes.values()
+            if any(word in ep.task.lower() for word in keywords)
+        ]
+        episodes.sort(key=lambda ep: (ep.success, ep.timestamp), reverse=True)
+        return episodes[:limit]
 
     def __len__(self) -> int:
         """Get number of stored episodes."""

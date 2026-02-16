@@ -52,6 +52,16 @@ npm run dev
 - `GET /api/v1/runs` list runs
 - `GET /api/v1/runs/{run_id}` run details
 - `POST /api/v1/runs/{run_id}/approval` approve/reject proposed action
+- `POST /api/v1/runs/channels/{channel}` ingest normalized channel event (Phase 1: `slack`, `telegram`)
+- `GET /api/v1/runs/channels/{channel}/trust-policy` read trust policy
+- `PUT /api/v1/runs/channels/{channel}/trust-policy` update trust policy (`pairing`/`open`, allowlist)
+- `GET /api/v1/runs/channels/{channel}/pairing/pending` list pending pairing codes
+- `POST /api/v1/runs/channels/{channel}/pairing/approve` approve pairing code
+- Channel command UX (message text): `/run`, `/status`, `/approve`, `/reject`
+- `GET /api/v1/runs/channels/sessions` inspect channel session → run mappings
+- `GET /api/v1/runs/channels/metrics` channel observability counters
+- `GET /api/v1/runs/channels/outbound-retry` outbound retry/dead-letter snapshot
+- `GET/PUT /api/v1/runs/channels/approver-allowlist` command approver admin controls
 
 ## Notes
 
