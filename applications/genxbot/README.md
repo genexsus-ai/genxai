@@ -11,6 +11,8 @@ This app is scaffolded in `applications/genxbot` and now wired to **GenXAI** pri
 
 👉 New: GenXBot vs OpenClaw comparison: [`COMPARISON_OPENCLAW.md`](./COMPARISON_OPENCLAW.md)
 
+👉 New: First-time local setup checklist: [`FIRST_TIME_SETUP.md`](./FIRST_TIME_SETUP.md)
+
 ## Structure
 
 ```text
