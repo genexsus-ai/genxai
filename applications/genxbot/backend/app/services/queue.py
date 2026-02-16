@@ -43,6 +43,12 @@ class RunQueueService:
         with self._lock:
             return self._jobs.get(job_id)
 
+    def pending_count(self) -> int:
+        return self._queue.qsize()
+
+    def is_worker_alive(self) -> bool:
+        return bool(self._worker and self._worker.is_alive())
+
     def _update_job(self, job_id: str, fn: Callable[[QueueJobStatusResponse], None]) -> None:
         with self._lock:
             job = self._jobs.get(job_id)

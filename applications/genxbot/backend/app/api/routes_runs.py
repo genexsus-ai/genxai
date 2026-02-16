@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.config import get_settings
@@ -11,12 +13,19 @@ from app.schemas import (
     ApproverAllowlistUpdateRequest,
     ChannelInboundRequest,
     ChannelInboundResponse,
+    ChannelMaintenanceMode,
+    ChannelMaintenanceModeUpdateRequest,
     ChannelMetricsSnapshot,
     ChannelSessionSnapshot,
     ChannelTrustPolicy,
     OutboundRetryQueueSnapshot,
+    OutboundRetryJob,
+    QueueHealthSnapshot,
+    IdempotencyCacheSnapshot,
+    AdminAuditSnapshot,
     ChannelTrustPolicyUpdateRequest,
     AuditEntry,
+    AdminAuditEntry,
     ConnectorTriggerRequest,
     ConnectorTriggerResponse,
     EvaluationMetrics,
@@ -43,6 +52,7 @@ from app.services.orchestrator import GenXBotOrchestrator
 from app.services.policy import SafetyPolicy
 from app.services.queue import RunQueueService
 from app.services.rate_limit import InMemoryRateLimiter, build_rate_limiter_dependency
+from app.services.authz import AdminAuditService, AdminAuthorizationService
 from app.services.store import RunStore
 from app.services.webhook_security import WebhookSecurityService
 from app.services.outbound_retry_queue import OutboundRetryQueueService
@@ -105,6 +115,15 @@ _webhook_security = WebhookSecurityService(
 _command_approver_allowlist = {
     v.strip() for v in _settings.channel_command_approver_allowlist.split(",") if v.strip()
 }
+_channel_maintenance: dict[str, ChannelMaintenanceMode] = {
+    "slack": ChannelMaintenanceMode(channel="slack", enabled=False, reason=""),
+    "telegram": ChannelMaintenanceMode(channel="telegram", enabled=False, reason=""),
+}
+_channel_idempotency_cache: dict[str, tuple[float, ChannelInboundResponse]] = {}
+_channel_idempotency_cache_ttl_seconds = max(_settings.channel_idempotency_cache_ttl_seconds, 1)
+_channel_idempotency_cache_max_entries = max(_settings.channel_idempotency_cache_max_entries, 1)
+_admin_authz = AdminAuthorizationService()
+_admin_audit = AdminAuditService(max_entries=_settings.admin_audit_max_entries)
 
 
 def _send_outbound(
@@ -131,6 +150,66 @@ def _send_outbound(
 
     _channel_observability.record_outbound(channel=channel, delivery_status=delivery)
     return delivery
+
+
+def _prune_channel_idempotency_cache(now: float | None = None) -> None:
+    current = now or time.time()
+    expires_before = current - _channel_idempotency_cache_ttl_seconds
+
+    expired = [k for k, (ts, _) in _channel_idempotency_cache.items() if ts < expires_before]
+    for key in expired:
+        _channel_idempotency_cache.pop(key, None)
+
+    overflow = len(_channel_idempotency_cache) - _channel_idempotency_cache_max_entries
+    if overflow > 0:
+        oldest = sorted(_channel_idempotency_cache.items(), key=lambda item: item[1][0])
+        for key, _ in oldest[:overflow]:
+            _channel_idempotency_cache.pop(key, None)
+
+
+def _get_cached_channel_response(token: str | None) -> ChannelInboundResponse | None:
+    if not token:
+        return None
+
+    _prune_channel_idempotency_cache()
+    entry = _channel_idempotency_cache.get(token)
+    if not entry:
+        return None
+    return entry[1]
+
+
+def _cache_channel_response(token: str | None, response: ChannelInboundResponse) -> ChannelInboundResponse:
+    if token:
+        _prune_channel_idempotency_cache()
+        _channel_idempotency_cache[token] = (time.time(), response)
+    return response
+
+
+def _idempotency_cache_snapshot() -> IdempotencyCacheSnapshot:
+    _prune_channel_idempotency_cache()
+    return IdempotencyCacheSnapshot(
+        entries=len(_channel_idempotency_cache),
+        ttl_seconds=_channel_idempotency_cache_ttl_seconds,
+        max_entries=_channel_idempotency_cache_max_entries,
+    )
+
+
+def _admin_origin(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
+
+
+def _admin_audit_snapshot() -> AdminAuditSnapshot:
+    return AdminAuditSnapshot(
+        entries=len(_admin_audit.list_entries()),
+        max_entries=_admin_audit.max_entries,
+    )
+
+
+def _get_maintenance(channel: str) -> ChannelMaintenanceMode:
+    key = channel.strip().lower()
+    if key not in _channel_maintenance:
+        raise HTTPException(status_code=400, detail=f"Unsupported channel: {channel}")
+    return _channel_maintenance[key]
 
 router = APIRouter(
     prefix="/runs",
@@ -236,11 +315,33 @@ def ingest_channel_event(
     orchestrator: GenXBotOrchestrator = Depends(get_orchestrator),
 ) -> ChannelInboundResponse:
     trace_id = _channel_observability.new_trace_id()
+    idempotency_key = raw_request.headers.get("x-idempotency-key", "").strip()
+    idempotency_token = (
+        f"{request.channel}:{idempotency_key}" if idempotency_key else None
+    )
+    cached = _get_cached_channel_response(idempotency_token)
+    if cached:
+        return cached
+
     if channel != request.channel:
         raise HTTPException(
             status_code=400,
             detail="Path channel and payload channel mismatch",
         )
+
+    maintenance = _get_maintenance(request.channel)
+    if maintenance.enabled:
+        return _cache_channel_response(idempotency_token, ChannelInboundResponse(
+            channel=request.channel,
+            event_type=request.event_type,
+            command="maintenance",
+            outbound_text=(
+                f"⚠️ {request.channel} maintenance mode enabled. "
+                f"{maintenance.reason or 'Please try again later.'}"
+            ),
+            outbound_delivery="skipped:maintenance",
+            trace_id=trace_id,
+        ))
 
     try:
         normalized = parse_channel_event(
@@ -292,7 +393,7 @@ def ingest_channel_event(
                 thread_id=normalized.thread_id,
                 text=outbound_text,
             )
-            return ChannelInboundResponse(
+            return _cache_channel_response(idempotency_token, ChannelInboundResponse(
                 channel=request.channel,
                 event_type=request.event_type,
                 command=command,
@@ -300,7 +401,7 @@ def ingest_channel_event(
                 outbound_delivery=delivery,
                 session_key=session_key,
                 trace_id=trace_id,
-            )
+            ))
         run = orchestrator.get_run(run_id)
         if not run:
             outbound_text = f"Run {run_id} not found."
@@ -310,7 +411,7 @@ def ingest_channel_event(
                 thread_id=normalized.thread_id,
                 text=outbound_text,
             )
-            return ChannelInboundResponse(
+            return _cache_channel_response(idempotency_token, ChannelInboundResponse(
                 channel=request.channel,
                 event_type=request.event_type,
                 command=command,
@@ -318,7 +419,7 @@ def ingest_channel_event(
                 outbound_delivery=delivery,
                 session_key=session_key,
                 trace_id=trace_id,
-            )
+            ))
         outbound_text = format_outbound_status(run)
         delivery = _send_outbound(
             channel=normalized.channel,
@@ -326,7 +427,7 @@ def ingest_channel_event(
             thread_id=normalized.thread_id,
             text=outbound_text,
         )
-        return ChannelInboundResponse(
+        return _cache_channel_response(idempotency_token, ChannelInboundResponse(
             channel=request.channel,
             event_type=request.event_type,
             run=run,
@@ -335,7 +436,7 @@ def ingest_channel_event(
             outbound_delivery=delivery,
             session_key=session_key,
             trace_id=trace_id,
-        )
+        ))
 
     if command in {"approve", "reject"}:
         if _command_approver_allowlist and normalized.user_id not in _command_approver_allowlist:
@@ -349,7 +450,7 @@ def ingest_channel_event(
                 thread_id=normalized.thread_id,
                 text=outbound_text,
             )
-            return ChannelInboundResponse(
+            return _cache_channel_response(idempotency_token, ChannelInboundResponse(
                 channel=request.channel,
                 event_type=request.event_type,
                 command=command,
@@ -357,7 +458,7 @@ def ingest_channel_event(
                 outbound_delivery=delivery,
                 session_key=session_key,
                 trace_id=trace_id,
-            )
+            ))
 
         parts = args.split()
         if not parts:
@@ -368,7 +469,7 @@ def ingest_channel_event(
                 thread_id=normalized.thread_id,
                 text=outbound_text,
             )
-            return ChannelInboundResponse(
+            return _cache_channel_response(idempotency_token, ChannelInboundResponse(
                 channel=request.channel,
                 event_type=request.event_type,
                 command=command,
@@ -376,7 +477,7 @@ def ingest_channel_event(
                 outbound_delivery=delivery,
                 session_key=session_key,
                 trace_id=trace_id,
-            )
+            ))
         action_id = parts[0]
         run_id = parts[1] if len(parts) > 1 else _channel_sessions.get_latest_run(session_key)
         if not run_id:
@@ -387,7 +488,7 @@ def ingest_channel_event(
                 thread_id=normalized.thread_id,
                 text=outbound_text,
             )
-            return ChannelInboundResponse(
+            return _cache_channel_response(idempotency_token, ChannelInboundResponse(
                 channel=request.channel,
                 event_type=request.event_type,
                 command=command,
@@ -395,7 +496,7 @@ def ingest_channel_event(
                 outbound_delivery=delivery,
                 session_key=session_key,
                 trace_id=trace_id,
-            )
+            ))
 
         run = orchestrator.decide_action(
             run_id,
@@ -414,7 +515,7 @@ def ingest_channel_event(
                 thread_id=normalized.thread_id,
                 text=outbound_text,
             )
-            return ChannelInboundResponse(
+            return _cache_channel_response(idempotency_token, ChannelInboundResponse(
                 channel=request.channel,
                 event_type=request.event_type,
                 command=command,
@@ -422,7 +523,7 @@ def ingest_channel_event(
                 outbound_delivery=delivery,
                 session_key=session_key,
                 trace_id=trace_id,
-            )
+            ))
 
         outbound_text = format_outbound_action_decision(run, approved=command == "approve")
         delivery = _send_outbound(
@@ -431,7 +532,7 @@ def ingest_channel_event(
             thread_id=normalized.thread_id,
             text=outbound_text,
         )
-        return ChannelInboundResponse(
+        return _cache_channel_response(idempotency_token, ChannelInboundResponse(
             channel=request.channel,
             event_type=request.event_type,
             run=run,
@@ -440,7 +541,7 @@ def ingest_channel_event(
             outbound_delivery=delivery,
             session_key=session_key,
             trace_id=trace_id,
-        )
+        ))
 
     run_goal = args if command == "run" and args else normalized.text
     run = orchestrator.create_run_from_channel_event(
@@ -455,7 +556,7 @@ def ingest_channel_event(
         thread_id=normalized.thread_id,
         text=outbound_text,
     )
-    return ChannelInboundResponse(
+    return _cache_channel_response(idempotency_token, ChannelInboundResponse(
         channel=request.channel,
         event_type=request.event_type,
         run=run,
@@ -464,7 +565,7 @@ def ingest_channel_event(
         outbound_delivery=delivery,
         session_key=session_key,
         trace_id=trace_id,
-    )
+    ))
 
 
 @router.get("/channels/sessions", response_model=list[ChannelSessionSnapshot])
@@ -477,23 +578,92 @@ def get_channel_metrics() -> ChannelMetricsSnapshot:
     return _channel_observability.snapshot()
 
 
+@router.get("/channels/{channel}/maintenance", response_model=ChannelMaintenanceMode)
+def get_channel_maintenance(channel: str, raw_request: Request) -> ChannelMaintenanceMode:
+    _admin_authz.require(raw_request, minimum_role="approver")
+    return _get_maintenance(channel)
+
+
+@router.put("/channels/{channel}/maintenance", response_model=ChannelMaintenanceMode)
+def update_channel_maintenance(
+    channel: str,
+    request: ChannelMaintenanceModeUpdateRequest,
+    raw_request: Request,
+) -> ChannelMaintenanceMode:
+    context = _admin_authz.require(raw_request, minimum_role="admin")
+    current = _get_maintenance(channel)
+    before = current.model_dump()
+    updated = ChannelMaintenanceMode(
+        channel=current.channel,
+        enabled=request.enabled,
+        reason=request.reason.strip(),
+    )
+    _channel_maintenance[current.channel] = updated
+    _admin_audit.record(
+        context=context,
+        action="channel_maintenance_update",
+        origin=_admin_origin(raw_request),
+        trace_id=_channel_observability.new_trace_id(),
+        before=before,
+        after=updated.model_dump(),
+    )
+    return updated
+
+
 @router.get("/channels/outbound-retry", response_model=OutboundRetryQueueSnapshot)
 def get_outbound_retry_queue() -> OutboundRetryQueueSnapshot:
     return _outbound_retry_queue.snapshot()
 
 
+@router.get("/channels/outbound-retry/deadletters", response_model=list[OutboundRetryJob])
+def list_outbound_retry_deadletters() -> list[OutboundRetryJob]:
+    return _outbound_retry_queue.list_dead_letters()
+
+
+@router.post("/channels/outbound-retry/replay/{job_id}", response_model=OutboundRetryQueueSnapshot)
+def replay_outbound_deadletter(job_id: str, raw_request: Request) -> OutboundRetryQueueSnapshot:
+    context = _admin_authz.require(raw_request, minimum_role="approver")
+    before = _outbound_retry_queue.snapshot().model_dump()
+    replayed = _outbound_retry_queue.replay_dead_letter(job_id)
+    if not replayed:
+        raise HTTPException(status_code=404, detail="Dead-letter job not found")
+    after_snapshot = _outbound_retry_queue.snapshot()
+    _admin_audit.record(
+        context=context,
+        action="deadletter_replay",
+        origin=_admin_origin(raw_request),
+        trace_id=_channel_observability.new_trace_id(),
+        before=before,
+        after=after_snapshot.model_dump(),
+    )
+    return after_snapshot
+
+
 @router.get("/channels/approver-allowlist", response_model=ApproverAllowlistResponse)
-def get_channel_approver_allowlist() -> ApproverAllowlistResponse:
+def get_channel_approver_allowlist(raw_request: Request) -> ApproverAllowlistResponse:
+    _admin_authz.require(raw_request, minimum_role="approver")
     return ApproverAllowlistResponse(users=sorted(_command_approver_allowlist))
 
 
 @router.put("/channels/approver-allowlist", response_model=ApproverAllowlistResponse)
 def update_channel_approver_allowlist(
     request: ApproverAllowlistUpdateRequest,
+    raw_request: Request,
 ) -> ApproverAllowlistResponse:
+    context = _admin_authz.require(raw_request, minimum_role="admin")
     global _command_approver_allowlist
+    before = {"users": sorted(_command_approver_allowlist)}
     _command_approver_allowlist = {str(v).strip() for v in request.users if str(v).strip()}
-    return ApproverAllowlistResponse(users=sorted(_command_approver_allowlist))
+    response = ApproverAllowlistResponse(users=sorted(_command_approver_allowlist))
+    _admin_audit.record(
+        context=context,
+        action="approver_allowlist_update",
+        origin=_admin_origin(raw_request),
+        trace_id=_channel_observability.new_trace_id(),
+        before=before,
+        after=response.model_dump(),
+    )
+    return response
 
 
 @router.get("/channels/{channel}/trust-policy", response_model=ChannelTrustPolicy)
@@ -508,13 +678,25 @@ def get_channel_trust_policy(channel: str) -> ChannelTrustPolicy:
 def update_channel_trust_policy(
     channel: str,
     request: ChannelTrustPolicyUpdateRequest,
+    raw_request: Request,
 ) -> ChannelTrustPolicy:
+    context = _admin_authz.require(raw_request, minimum_role="admin")
+    before = _channel_trust.get_policy(channel).model_dump()
     try:
-        return _channel_trust.set_policy(
+        updated = _channel_trust.set_policy(
             channel=channel,
             dm_policy=request.dm_policy,
             allow_from=request.allow_from,
         )
+        _admin_audit.record(
+            context=context,
+            action="trust_policy_update",
+            origin=_admin_origin(raw_request),
+            trace_id=_channel_observability.new_trace_id(),
+            before=before,
+            after=updated.model_dump(),
+        )
+        return updated
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -531,18 +713,72 @@ def list_pending_pairing_codes(channel: str) -> list[PendingPairingCode]:
 def approve_pairing_code(
     channel: str,
     request: PairingApprovalRequest,
+    raw_request: Request,
 ) -> PairingApprovalResponse:
+    context = _admin_authz.require(raw_request, minimum_role="approver")
+    before = {"pending": [p.model_dump() for p in _channel_trust.list_pending_codes(channel)]}
     try:
         user_id = _channel_trust.approve_pairing_code(channel, request.code)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    return PairingApprovalResponse(
+    response = PairingApprovalResponse(
         channel=channel.strip().lower(),
         code=request.code.strip().upper(),
         approved=user_id is not None,
         user_id=user_id,
     )
+    _admin_audit.record(
+        context=context,
+        action="pairing_approve",
+        origin=_admin_origin(raw_request),
+        trace_id=_channel_observability.new_trace_id(),
+        before=before,
+        after=response.model_dump(),
+    )
+    return response
+
+
+@router.get("/channels/admin-audit", response_model=list[AdminAuditEntry])
+def list_admin_audit(raw_request: Request) -> list[AdminAuditEntry]:
+    _admin_authz.require(raw_request, minimum_role="approver")
+    return _admin_audit.list_entries()
+
+
+@router.get("/channels/admin-audit/stats", response_model=AdminAuditSnapshot)
+def get_admin_audit_stats(raw_request: Request) -> AdminAuditSnapshot:
+    _admin_authz.require(raw_request, minimum_role="approver")
+    return _admin_audit_snapshot()
+
+
+@router.post("/channels/admin-audit/clear", response_model=AdminAuditSnapshot)
+def clear_admin_audit(raw_request: Request) -> AdminAuditSnapshot:
+    _admin_authz.require(raw_request, minimum_role="admin")
+    _admin_audit.clear()
+    return _admin_audit_snapshot()
+
+
+@router.get("/channels/idempotency-cache", response_model=IdempotencyCacheSnapshot)
+def get_idempotency_cache_stats(raw_request: Request) -> IdempotencyCacheSnapshot:
+    _admin_authz.require(raw_request, minimum_role="approver")
+    return _idempotency_cache_snapshot()
+
+
+@router.post("/channels/idempotency-cache/clear", response_model=IdempotencyCacheSnapshot)
+def clear_idempotency_cache(raw_request: Request) -> IdempotencyCacheSnapshot:
+    context = _admin_authz.require(raw_request, minimum_role="admin")
+    before = _idempotency_cache_snapshot().model_dump()
+    _channel_idempotency_cache.clear()
+    after = _idempotency_cache_snapshot()
+    _admin_audit.record(
+        context=context,
+        action="idempotency_cache_clear",
+        origin=_admin_origin(raw_request),
+        trace_id=_channel_observability.new_trace_id(),
+        before=before,
+        after=after.model_dump(),
+    )
+    return after
 
 
 @router.post("/queue", response_model=QueueJobStatusResponse)
@@ -550,6 +786,17 @@ def enqueue_run_job(
     request: RunTaskRequest,
 ) -> QueueJobStatusResponse:
     return _run_queue.enqueue_run(request)
+
+
+@router.get("/queue/health", response_model=QueueHealthSnapshot)
+def get_queue_health() -> QueueHealthSnapshot:
+    return QueueHealthSnapshot(
+        run_queue_pending=_run_queue.pending_count(),
+        run_worker_alive=_run_queue.is_worker_alive(),
+        outbound_retry_pending=_outbound_retry_queue.pending_count(),
+        outbound_retry_dead_lettered=_outbound_retry_queue.dead_letter_count(),
+        outbound_retry_worker_alive=_outbound_retry_queue.is_worker_alive(),
+    )
 
 
 @router.get("/queue/{job_id}", response_model=QueueJobStatusResponse)

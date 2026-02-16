@@ -95,6 +95,42 @@ class OutboundRetryQueueSnapshot(BaseModel):
     dead_letters: list[OutboundRetryJob] = Field(default_factory=list)
 
 
+class QueueHealthSnapshot(BaseModel):
+    run_queue_pending: int
+    run_worker_alive: bool
+    outbound_retry_pending: int
+    outbound_retry_dead_lettered: int
+    outbound_retry_worker_alive: bool
+
+
+class IdempotencyCacheSnapshot(BaseModel):
+    entries: int
+    ttl_seconds: int
+    max_entries: int
+
+
+class AdminAuditSnapshot(BaseModel):
+    entries: int
+    max_entries: int
+
+
+class AdminActorContext(BaseModel):
+    actor: str
+    actor_role: Literal["viewer", "executor", "approver", "admin"]
+
+
+class AdminAuditEntry(BaseModel):
+    id: str = Field(default_factory=lambda: f"admin_audit_{uuid4().hex[:8]}")
+    timestamp: str = Field(default_factory=utc_now_iso)
+    actor: str
+    actor_role: Literal["viewer", "executor", "approver", "admin"]
+    action: str
+    origin: str
+    trace_id: str
+    before: dict = Field(default_factory=dict)
+    after: dict = Field(default_factory=dict)
+
+
 class ApproverAllowlistResponse(BaseModel):
     users: list[str] = Field(default_factory=list)
 
@@ -112,6 +148,17 @@ class ChannelTrustPolicy(BaseModel):
 class ChannelTrustPolicyUpdateRequest(BaseModel):
     dm_policy: Literal["pairing", "open"]
     allow_from: list[str] = Field(default_factory=list)
+
+
+class ChannelMaintenanceMode(BaseModel):
+    channel: Literal["slack", "telegram"]
+    enabled: bool = False
+    reason: str = ""
+
+
+class ChannelMaintenanceModeUpdateRequest(BaseModel):
+    enabled: bool
+    reason: str = ""
 
 
 class PairingApprovalRequest(BaseModel):

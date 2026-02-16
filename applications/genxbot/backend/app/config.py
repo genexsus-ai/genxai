@@ -69,6 +69,10 @@ class Settings(BaseSettings):
     channel_outbound_retry_backoff_seconds: float = 0.2
 
     channel_command_approver_allowlist: str = ""
+    channel_idempotency_cache_ttl_seconds: int = 900
+    channel_idempotency_cache_max_entries: int = 1000
+    admin_audit_max_entries: int = 5000
+    admin_api_token: str = ""
 
 
 @lru_cache

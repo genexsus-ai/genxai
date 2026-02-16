@@ -60,8 +60,57 @@ npm run dev
 - Channel command UX (message text): `/run`, `/status`, `/approve`, `/reject`
 - `GET /api/v1/runs/channels/sessions` inspect channel session → run mappings
 - `GET /api/v1/runs/channels/metrics` channel observability counters
+- `GET /api/v1/runs/channels/{channel}/maintenance` get channel maintenance mode
+- `PUT /api/v1/runs/channels/{channel}/maintenance` update maintenance mode (admin protected)
 - `GET /api/v1/runs/channels/outbound-retry` outbound retry/dead-letter snapshot
+- `GET /api/v1/runs/channels/outbound-retry/deadletters` list dead-letter jobs
+- `POST /api/v1/runs/channels/outbound-retry/replay/{job_id}` replay a dead-letter job
 - `GET/PUT /api/v1/runs/channels/approver-allowlist` command approver admin controls
+- `GET /api/v1/runs/channels/admin-audit` list admin mutation audit entries
+- `GET /api/v1/runs/channels/admin-audit/stats` admin audit retention stats
+- `POST /api/v1/runs/channels/admin-audit/clear` clear admin audit log (admin protected)
+- `GET /api/v1/runs/channels/idempotency-cache` idempotency cache stats (admin protected)
+- `POST /api/v1/runs/channels/idempotency-cache/clear` clear idempotency cache (admin protected)
+- `GET /api/v1/runs/queue/health` queue worker and backlog health snapshot
+- `POST /api/v1/runs/channels/{channel}` supports optional `x-idempotency-key` header for dedupe
+
+### Admin security headers (for protected endpoints when `ADMIN_API_TOKEN` is set)
+
+- `x-admin-token`: must match configured admin token
+- `x-admin-actor`: operator identity
+- `x-admin-role`: `viewer|executor|approver|admin` (role-checked per endpoint)
+
+### Idempotency cache controls (Phase 6C)
+
+Config keys:
+
+- `CHANNEL_IDEMPOTENCY_CACHE_TTL_SECONDS` (default `900`)
+- `CHANNEL_IDEMPOTENCY_CACHE_MAX_ENTRIES` (default `1000`)
+
+Behavior:
+
+- Entries expire by TTL and are pruned on access/write.
+- Cache also enforces max-size by evicting oldest entries.
+
+### Admin audit retention controls (Phase 6D)
+
+Config key:
+
+- `ADMIN_AUDIT_MAX_ENTRIES` (default `5000`)
+
+Behavior:
+
+- Admin audit log is now bounded (oldest entries are evicted automatically).
+- Use `/channels/admin-audit/stats` to monitor current size and cap.
+- Use `/channels/admin-audit/clear` for controlled admin resets.
+
+### Channel maintenance mode (Phase 6E)
+
+Per-channel operational switch to temporarily block new channel ingests:
+
+- Supported channels: `slack`, `telegram`
+- When enabled, inbound events return a maintenance response (`command: maintenance`) and skip run creation.
+- State updates are admin-audited (`channel_maintenance_update`).
 
 ## Notes
 

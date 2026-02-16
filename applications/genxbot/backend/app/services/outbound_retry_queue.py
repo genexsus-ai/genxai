@@ -56,30 +56,61 @@ class OutboundRetryQueueService:
                 dead_letters=list(self._dead_letters),
             )
 
+    def list_dead_letters(self) -> list[OutboundRetryJob]:
+        with self._lock:
+            return list(self._dead_letters)
+
+    def replay_dead_letter(self, job_id: str) -> bool:
+        with self._lock:
+            idx = next((i for i, j in enumerate(self._dead_letters) if j.id == job_id), None)
+            if idx is None:
+                return False
+            job = self._dead_letters.pop(idx)
+            job.attempts = 0
+            job.last_error = None
+            self._queue.append(job)
+            return True
+
+    def pending_count(self) -> int:
+        with self._lock:
+            return len(self._queue)
+
+    def dead_letter_count(self) -> int:
+        with self._lock:
+            return len(self._dead_letters)
+
+    def is_worker_alive(self) -> bool:
+        return bool(self._worker and self._worker.is_alive())
+
     def _loop(self) -> None:
         while not self._stop.is_set():
-            job: OutboundRetryJob | None = None
-            with self._lock:
-                if self._queue:
-                    job = self._queue.popleft()
-
-            if not job:
+            processed = self.process_one()
+            if not processed:
                 time.sleep(0.05)
-                continue
+ 
+    def process_one(self) -> bool:
+        job: OutboundRetryJob | None = None
+        with self._lock:
+            if self._queue:
+                job = self._queue.popleft()
 
-            status = self._send_fn(job.channel, job.channel_id, job.text, job.thread_id)
-            if status.startswith("sent:"):
-                continue
+        if not job:
+            return False
 
-            job.attempts += 1
-            job.last_error = status
-            if job.attempts >= job.max_attempts:
-                with self._lock:
-                    self._dead_letters.append(job)
-            else:
-                time.sleep(self._backoff_seconds)
-                with self._lock:
-                    self._queue.append(job)
+        status = self._send_fn(job.channel, job.channel_id, job.text, job.thread_id)
+        if status.startswith("sent:"):
+            return True
+
+        job.attempts += 1
+        job.last_error = status
+        if job.attempts >= job.max_attempts:
+            with self._lock:
+                self._dead_letters.append(job)
+        else:
+            time.sleep(self._backoff_seconds)
+            with self._lock:
+                self._queue.append(job)
+        return True
 
     def stop(self) -> None:
         self._stop.set()

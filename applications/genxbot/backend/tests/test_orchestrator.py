@@ -1212,6 +1212,350 @@ def test_channel_admin_allowlist_get_and_update() -> None:
         runs_routes._command_approver_allowlist = original_allowlist
 
 
+def test_admin_token_and_role_enforced_for_sensitive_endpoints() -> None:
+    original_token = runs_routes._admin_authz._admin_token
+    original_allowlist = set(runs_routes._command_approver_allowlist)
+    original_admin_audit_entries = list(runs_routes._admin_audit.list_entries())
+    runs_routes._admin_authz._admin_token = "token-6b"
+    runs_routes._command_approver_allowlist = {"U-ONE"}
+    try:
+        client = TestClient(create_app())
+
+        unauthorized = client.get("/api/v1/runs/channels/approver-allowlist")
+        assert unauthorized.status_code == 401
+
+        insufficient_role = client.put(
+            "/api/v1/runs/channels/approver-allowlist",
+            headers={
+                "x-admin-token": "token-6b",
+                "x-admin-actor": "ops-user",
+                "x-admin-role": "approver",
+            },
+            json={"users": ["U-ADMIN"]},
+        )
+        assert insufficient_role.status_code == 403
+
+        updated = client.put(
+            "/api/v1/runs/channels/approver-allowlist",
+            headers={
+                "x-admin-token": "token-6b",
+                "x-admin-actor": "root-admin",
+                "x-admin-role": "admin",
+            },
+            json={"users": ["U-ADMIN", "U-OPS"]},
+        )
+        assert updated.status_code == 200
+        assert updated.json()["users"] == ["U-ADMIN", "U-OPS"]
+
+        admin_audit = client.get(
+            "/api/v1/runs/channels/admin-audit",
+            headers={
+                "x-admin-token": "token-6b",
+                "x-admin-actor": "ops-reader",
+                "x-admin-role": "approver",
+            },
+        )
+        assert admin_audit.status_code == 200
+        entries = admin_audit.json()
+        assert entries
+        latest = entries[-1]
+        assert latest["action"] == "approver_allowlist_update"
+        assert latest["actor"] == "root-admin"
+        assert latest["origin"]
+        assert latest["trace_id"].startswith("trace_")
+        assert latest["before"]["users"] == ["U-ONE"]
+        assert latest["after"]["users"] == ["U-ADMIN", "U-OPS"]
+    finally:
+        runs_routes._admin_authz._admin_token = original_token
+        runs_routes._command_approver_allowlist = original_allowlist
+        runs_routes._admin_audit._entries = original_admin_audit_entries
+
+
+def test_idempotency_cache_stats_and_admin_clear() -> None:
+    original_token = runs_routes._admin_authz._admin_token
+    original_cache = dict(runs_routes._channel_idempotency_cache)
+    original_ttl = runs_routes._channel_idempotency_cache_ttl_seconds
+    original_max = runs_routes._channel_idempotency_cache_max_entries
+    original_admin_audit_entries = list(runs_routes._admin_audit.list_entries())
+
+    runs_routes._admin_authz._admin_token = "token-6c"
+    runs_routes._channel_idempotency_cache_ttl_seconds = 600
+    runs_routes._channel_idempotency_cache_max_entries = 10
+    runs_routes._channel_idempotency_cache.clear()
+    runs_routes._channel_idempotency_cache["slack:k1"] = (
+        time.time(),
+        runs_routes.ChannelInboundResponse(channel="slack", event_type="message", command="run"),
+    )
+    runs_routes._channel_idempotency_cache["telegram:k2"] = (
+        time.time(),
+        runs_routes.ChannelInboundResponse(channel="telegram", event_type="message", command="status"),
+    )
+    try:
+        client = TestClient(create_app())
+
+        stats = client.get(
+            "/api/v1/runs/channels/idempotency-cache",
+            headers={
+                "x-admin-token": "token-6c",
+                "x-admin-actor": "ops-reader",
+                "x-admin-role": "approver",
+            },
+        )
+        assert stats.status_code == 200
+        assert stats.json()["entries"] == 2
+        assert stats.json()["ttl_seconds"] == 600
+        assert stats.json()["max_entries"] == 10
+
+        denied_clear = client.post(
+            "/api/v1/runs/channels/idempotency-cache/clear",
+            headers={
+                "x-admin-token": "token-6c",
+                "x-admin-actor": "ops-reader",
+                "x-admin-role": "approver",
+            },
+        )
+        assert denied_clear.status_code == 403
+
+        cleared = client.post(
+            "/api/v1/runs/channels/idempotency-cache/clear",
+            headers={
+                "x-admin-token": "token-6c",
+                "x-admin-actor": "root-admin",
+                "x-admin-role": "admin",
+            },
+        )
+        assert cleared.status_code == 200
+        assert cleared.json()["entries"] == 0
+
+        admin_audit = client.get(
+            "/api/v1/runs/channels/admin-audit",
+            headers={
+                "x-admin-token": "token-6c",
+                "x-admin-actor": "ops-reader",
+                "x-admin-role": "approver",
+            },
+        )
+        assert admin_audit.status_code == 200
+        latest = admin_audit.json()[-1]
+        assert latest["action"] == "idempotency_cache_clear"
+        assert latest["before"]["entries"] == 2
+        assert latest["after"]["entries"] == 0
+    finally:
+        runs_routes._admin_authz._admin_token = original_token
+        runs_routes._channel_idempotency_cache.clear()
+        runs_routes._channel_idempotency_cache.update(original_cache)
+        runs_routes._channel_idempotency_cache_ttl_seconds = original_ttl
+        runs_routes._channel_idempotency_cache_max_entries = original_max
+        runs_routes._admin_audit._entries = original_admin_audit_entries
+
+
+def test_admin_audit_retention_stats_and_clear() -> None:
+    from app.schemas import AdminActorContext
+
+    original_token = runs_routes._admin_authz._admin_token
+    original_entries = list(runs_routes._admin_audit.list_entries())
+    original_max_entries = runs_routes._admin_audit.max_entries
+
+    runs_routes._admin_authz._admin_token = "token-6d"
+    runs_routes._admin_audit._entries = []
+    runs_routes._admin_audit._max_entries = 2
+    runs_routes._admin_audit.record(
+        context=AdminActorContext(actor="a1", actor_role="admin"),
+        action="oldest",
+        origin="test",
+        trace_id="trace_oldest",
+        before={},
+        after={},
+    )
+    runs_routes._admin_audit.record(
+        context=AdminActorContext(actor="a2", actor_role="admin"),
+        action="middle",
+        origin="test",
+        trace_id="trace_middle",
+        before={},
+        after={},
+    )
+    runs_routes._admin_audit.record(
+        context=AdminActorContext(actor="a3", actor_role="admin"),
+        action="latest",
+        origin="test",
+        trace_id="trace_latest",
+        before={},
+        after={},
+    )
+    try:
+        client = TestClient(create_app())
+
+        stats = client.get(
+            "/api/v1/runs/channels/admin-audit/stats",
+            headers={
+                "x-admin-token": "token-6d",
+                "x-admin-actor": "ops-reader",
+                "x-admin-role": "approver",
+            },
+        )
+        assert stats.status_code == 200
+        assert stats.json()["entries"] == 2
+        assert stats.json()["max_entries"] == 2
+
+        audit_entries = client.get(
+            "/api/v1/runs/channels/admin-audit",
+            headers={
+                "x-admin-token": "token-6d",
+                "x-admin-actor": "ops-reader",
+                "x-admin-role": "approver",
+            },
+        )
+        assert audit_entries.status_code == 200
+        actions = [e["action"] for e in audit_entries.json()]
+        assert actions == ["middle", "latest"]
+
+        denied_clear = client.post(
+            "/api/v1/runs/channels/admin-audit/clear",
+            headers={
+                "x-admin-token": "token-6d",
+                "x-admin-actor": "ops-reader",
+                "x-admin-role": "approver",
+            },
+        )
+        assert denied_clear.status_code == 403
+
+        cleared = client.post(
+            "/api/v1/runs/channels/admin-audit/clear",
+            headers={
+                "x-admin-token": "token-6d",
+                "x-admin-actor": "root-admin",
+                "x-admin-role": "admin",
+            },
+        )
+        assert cleared.status_code == 200
+        assert cleared.json()["entries"] == 0
+    finally:
+        runs_routes._admin_authz._admin_token = original_token
+        runs_routes._admin_audit._max_entries = original_max_entries
+        runs_routes._admin_audit._entries = original_entries
+
+
+def test_channel_maintenance_mode_blocks_ingest_and_can_be_toggled() -> None:
+    orchestrator = build_orchestrator()
+
+    original_orchestrator = runs_routes._orchestrator
+    original_channel_trust = runs_routes._channel_trust
+    original_sessions = runs_routes._channel_sessions
+    original_token = runs_routes._admin_authz._admin_token
+    original_maintenance = {
+        k: v.model_copy(deep=True) for k, v in runs_routes._channel_maintenance.items()
+    }
+    original_admin_audit_entries = list(runs_routes._admin_audit.list_entries())
+
+    runs_routes._orchestrator = orchestrator
+    runs_routes._admin_authz._admin_token = "token-6e"
+    from app.services.channel_sessions import ChannelSessionService
+    from app.services.channel_trust import ChannelTrustService
+
+    runs_routes._channel_trust = ChannelTrustService()
+    runs_routes._channel_trust.set_policy("slack", dm_policy="open", allow_from=[])
+    runs_routes._channel_sessions = ChannelSessionService()
+    runs_routes._channel_maintenance["slack"] = runs_routes.ChannelMaintenanceMode(
+        channel="slack", enabled=False, reason=""
+    )
+    try:
+        client = TestClient(create_app())
+
+        denied_toggle = client.put(
+            "/api/v1/runs/channels/slack/maintenance",
+            headers={
+                "x-admin-token": "token-6e",
+                "x-admin-actor": "ops-approver",
+                "x-admin-role": "approver",
+            },
+            json={"enabled": True, "reason": "maintenance window"},
+        )
+        assert denied_toggle.status_code == 403
+
+        enabled = client.put(
+            "/api/v1/runs/channels/slack/maintenance",
+            headers={
+                "x-admin-token": "token-6e",
+                "x-admin-actor": "root-admin",
+                "x-admin-role": "admin",
+            },
+            json={"enabled": True, "reason": "maintenance window"},
+        )
+        assert enabled.status_code == 200
+        assert enabled.json()["enabled"] is True
+
+        blocked = client.post(
+            "/api/v1/runs/channels/slack",
+            json={
+                "channel": "slack",
+                "event_type": "message",
+                "payload": {
+                    "event": {
+                        "type": "message",
+                        "user": "U-MAINT",
+                        "channel": "C-MAINT",
+                        "text": "/run should be blocked",
+                    }
+                },
+            },
+        )
+        assert blocked.status_code == 200
+        assert blocked.json()["command"] == "maintenance"
+        assert blocked.json()["outbound_delivery"] == "skipped:maintenance"
+
+        disabled = client.put(
+            "/api/v1/runs/channels/slack/maintenance",
+            headers={
+                "x-admin-token": "token-6e",
+                "x-admin-actor": "root-admin",
+                "x-admin-role": "admin",
+            },
+            json={"enabled": False, "reason": ""},
+        )
+        assert disabled.status_code == 200
+        assert disabled.json()["enabled"] is False
+
+        accepted = client.post(
+            "/api/v1/runs/channels/slack",
+            json={
+                "channel": "slack",
+                "event_type": "message",
+                "default_repo_path": ".",
+                "payload": {
+                    "event": {
+                        "type": "message",
+                        "user": "U-MAINT",
+                        "channel": "C-MAINT",
+                        "text": "/run accepted after maintenance",
+                    }
+                },
+            },
+        )
+        assert accepted.status_code == 200
+        assert accepted.json()["run"]["id"].startswith("run_")
+
+        audit = client.get(
+            "/api/v1/runs/channels/admin-audit",
+            headers={
+                "x-admin-token": "token-6e",
+                "x-admin-actor": "ops-reader",
+                "x-admin-role": "approver",
+            },
+        )
+        assert audit.status_code == 200
+        actions = [entry["action"] for entry in audit.json()]
+        assert "channel_maintenance_update" in actions
+    finally:
+        runs_routes._admin_authz._admin_token = original_token
+        runs_routes._channel_maintenance.clear()
+        runs_routes._channel_maintenance.update(original_maintenance)
+        runs_routes._admin_audit._entries = original_admin_audit_entries
+        runs_routes._channel_sessions = original_sessions
+        runs_routes._channel_trust = original_channel_trust
+        runs_routes._orchestrator = original_orchestrator
+
+
 def test_failed_outbound_enqueue_retry_and_exposed_snapshot(tmp_path: Path) -> None:
     orchestrator = build_orchestrator()
 
@@ -1263,6 +1607,15 @@ def test_failed_outbound_enqueue_retry_and_exposed_snapshot(tmp_path: Path) -> N
         snapshot = client.get("/api/v1/runs/channels/outbound-retry")
         assert snapshot.status_code == 200
         assert snapshot.json()["queued"] >= 1
+
+        deadletters_before = client.get("/api/v1/runs/channels/outbound-retry/deadletters")
+        assert deadletters_before.status_code == 200
+        assert deadletters_before.json() == []
+
+        queue_health = client.get("/api/v1/runs/queue/health")
+        assert queue_health.status_code == 200
+        assert "run_queue_pending" in queue_health.json()
+        assert "outbound_retry_pending" in queue_health.json()
     finally:
         original_retry.stop()
         runs_routes._outbound_retry_queue = original_retry
@@ -1270,3 +1623,83 @@ def test_failed_outbound_enqueue_retry_and_exposed_snapshot(tmp_path: Path) -> N
         runs_routes._channel_sessions = original_sessions
         runs_routes._channel_trust = original_channel_trust
         runs_routes._orchestrator = original_orchestrator
+
+
+def test_channel_idempotency_key_returns_cached_response(tmp_path: Path) -> None:
+    orchestrator = build_orchestrator()
+
+    original_orchestrator = runs_routes._orchestrator
+    original_channel_trust = runs_routes._channel_trust
+    original_sessions = runs_routes._channel_sessions
+    original_cache = dict(runs_routes._channel_idempotency_cache)
+    runs_routes._orchestrator = orchestrator
+    from app.services.channel_sessions import ChannelSessionService
+    from app.services.channel_trust import ChannelTrustService
+
+    runs_routes._channel_trust = ChannelTrustService()
+    runs_routes._channel_trust.set_policy("slack", dm_policy="open", allow_from=[])
+    runs_routes._channel_sessions = ChannelSessionService()
+    runs_routes._channel_idempotency_cache.clear()
+    try:
+        client = TestClient(create_app())
+        headers = {"x-idempotency-key": "idem-123"}
+        payload = {
+            "channel": "slack",
+            "event_type": "message",
+            "default_repo_path": str(tmp_path),
+            "payload": {
+                "event": {
+                    "type": "message",
+                    "user": "U-IDEM",
+                    "channel": "C-IDEM",
+                    "text": "/run idempotent run",
+                }
+            },
+        }
+
+        first = client.post("/api/v1/runs/channels/slack", headers=headers, json=payload)
+        second = client.post("/api/v1/runs/channels/slack", headers=headers, json=payload)
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert first.json()["run"]["id"] == second.json()["run"]["id"]
+
+        runs = client.get("/api/v1/runs")
+        assert runs.status_code == 200
+        assert len(runs.json()) == 1
+    finally:
+        runs_routes._channel_idempotency_cache.clear()
+        runs_routes._channel_idempotency_cache.update(original_cache)
+        runs_routes._channel_sessions = original_sessions
+        runs_routes._channel_trust = original_channel_trust
+        runs_routes._orchestrator = original_orchestrator
+
+
+def test_deadletter_replay_endpoint_requeues_job() -> None:
+    from app.services.outbound_retry_queue import OutboundRetryQueueService
+
+    def _always_fail(channel, channel_id, text, thread_id):
+        return "failed:forced"
+
+    queue = OutboundRetryQueueService(
+        send_fn=_always_fail,
+        worker_enabled=False,
+        max_attempts=1,
+        backoff_seconds=0.0,
+    )
+    job = queue.enqueue(channel="slack", channel_id="C1", text="hello", thread_id=None)
+    queue.process_one()
+
+    original_queue = runs_routes._outbound_retry_queue
+    runs_routes._outbound_retry_queue = queue
+    try:
+        client = TestClient(create_app())
+        deadletters = client.get("/api/v1/runs/channels/outbound-retry/deadletters")
+        assert deadletters.status_code == 200
+        assert any(j["id"] == job.id for j in deadletters.json())
+
+        replay = client.post(f"/api/v1/runs/channels/outbound-retry/replay/{job.id}")
+        assert replay.status_code == 200
+        assert replay.json()["queued"] >= 1
+    finally:
+        queue.stop()
+        runs_routes._outbound_retry_queue = original_queue
