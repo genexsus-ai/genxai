@@ -1765,3 +1765,38 @@ def test_create_run_with_recipe_renders_goal_and_context(tmp_path: Path) -> None
         runs_routes._recipes.clear()
         runs_routes._recipes.update(original_recipes)
         runs_routes._orchestrator = original_orchestrator
+
+
+def test_create_run_with_recipe_loads_executable_actions(tmp_path: Path) -> None:
+    original_orchestrator = runs_routes._orchestrator
+    original_recipes = dict(runs_routes._recipes)
+    runs_routes._orchestrator = build_orchestrator()
+    try:
+        client = TestClient(create_app())
+        response = client.post(
+            "/api/v1/runs",
+            json={
+                "goal": "placeholder",
+                "repo_path": str(tmp_path),
+                "recipe_id": "discord",
+                "recipe_inputs": {
+                    "focus": "api",
+                    "priority": "high",
+                    "constraints": "none",
+                },
+                "requested_by": "recipe-user",
+            },
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["goal"] == "Execute the Discord workflow for this repository and summarize outcomes"
+        assert len(payload["pending_actions"]) == 2
+        assert payload["pending_actions"][0]["action_type"] == "command"
+        assert payload["pending_actions"][0]["description"] == "Run baseline checks for Discord"
+        assert payload["pending_actions"][1]["action_type"] == "edit"
+        assert payload["pending_actions"][1]["file_path"].endswith("/recipe_outputs/discord_summary.md")
+        assert any(evt["event"] == "recipe_actions_loaded" for evt in payload["timeline"])
+    finally:
+        runs_routes._recipes.clear()
+        runs_routes._recipes.update(original_recipes)
+        runs_routes._orchestrator = original_orchestrator

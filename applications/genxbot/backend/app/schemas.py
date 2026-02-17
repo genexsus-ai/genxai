@@ -20,6 +20,15 @@ class RunTaskRequest(BaseModel):
     requested_by: str = "anonymous"
     recipe_id: Optional[str] = None
     recipe_inputs: dict[str, str] = Field(default_factory=dict)
+    recipe_actions: list["RecipeActionTemplate"] = Field(default_factory=list)
+
+
+class RecipeActionTemplate(BaseModel):
+    action_type: Literal["command", "edit"]
+    description: str
+    command: Optional[str] = None
+    file_path: Optional[str] = None
+    patch: Optional[str] = None
 
 
 class RecipeDefinition(BaseModel):
@@ -29,6 +38,7 @@ class RecipeDefinition(BaseModel):
     goal_template: str
     context_template: Optional[str] = None
     tags: list[str] = Field(default_factory=list)
+    action_templates: list[RecipeActionTemplate] = Field(default_factory=list)
     enabled: bool = True
 
 
@@ -39,6 +49,7 @@ class RecipeCreateRequest(BaseModel):
     goal_template: str = Field(..., min_length=3)
     context_template: Optional[str] = None
     tags: list[str] = Field(default_factory=list)
+    action_templates: list[RecipeActionTemplate] = Field(default_factory=list)
 
 
 class RecipeListResponse(BaseModel):

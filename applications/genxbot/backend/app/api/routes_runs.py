@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import time
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
@@ -35,6 +37,7 @@ from app.schemas import (
     QueueJobStatusResponse,
     RerunFailedStepRequest,
     RecipeCreateRequest,
+    RecipeActionTemplate,
     RecipeDefinition,
     RecipeListResponse,
     RunSession,
@@ -127,8 +130,12 @@ _channel_idempotency_cache_ttl_seconds = max(_settings.channel_idempotency_cache
 _channel_idempotency_cache_max_entries = max(_settings.channel_idempotency_cache_max_entries, 1)
 _admin_authz = AdminAuthorizationService()
 _admin_audit = AdminAuditService(max_entries=_settings.admin_audit_max_entries)
-_recipes: dict[str, RecipeDefinition] = {
-    "test-hardening": RecipeDefinition(
+
+_RECIPES_LIBRARY_DIR = Path(__file__).resolve().parents[1] / "recipes"
+
+
+def _fallback_recipe() -> RecipeDefinition:
+    return RecipeDefinition(
         id="test-hardening",
         name="Test Hardening",
         description="Improve and stabilize tests around a target area",
@@ -137,7 +144,35 @@ _recipes: dict[str, RecipeDefinition] = {
         tags=["testing", "quality"],
         enabled=True,
     )
-}
+
+
+def _load_default_recipes_from_files() -> dict[str, RecipeDefinition]:
+    recipes: dict[str, RecipeDefinition] = {}
+    if not _RECIPES_LIBRARY_DIR.exists() or not _RECIPES_LIBRARY_DIR.is_dir():
+        fallback = _fallback_recipe()
+        return {fallback.id: fallback}
+
+    for recipe_dir in sorted(_RECIPES_LIBRARY_DIR.iterdir(), key=lambda p: p.name):
+        if not recipe_dir.is_dir():
+            continue
+        definition_file = recipe_dir / "recipe.json"
+        if not definition_file.exists():
+            continue
+        try:
+            payload = json.loads(definition_file.read_text(encoding="utf-8"))
+            recipe = RecipeDefinition(**payload)
+        except Exception:
+            continue
+        recipes[recipe.id] = recipe
+
+    if not recipes:
+        fallback = _fallback_recipe()
+        recipes[fallback.id] = fallback
+
+    return recipes
+
+
+_recipes: dict[str, RecipeDefinition] = _load_default_recipes_from_files()
 
 
 def _render_template(template: str | None, values: dict[str, str]) -> str | None:
@@ -151,6 +186,24 @@ def _render_template(template: str | None, values: dict[str, str]) -> str | None
         return template
 
 
+def _render_recipe_actions(
+    action_templates: list[RecipeActionTemplate],
+    values: dict[str, str],
+) -> list[RecipeActionTemplate]:
+    rendered: list[RecipeActionTemplate] = []
+    for action in action_templates:
+        rendered.append(
+            RecipeActionTemplate(
+                action_type=action.action_type,
+                description=_render_template(action.description, values) or action.description,
+                command=_render_template(action.command, values),
+                file_path=_render_template(action.file_path, values),
+                patch=_render_template(action.patch, values),
+            )
+        )
+    return rendered
+
+
 def _resolve_recipe_request(request: RunTaskRequest) -> RunTaskRequest:
     if not request.recipe_id:
         return request
@@ -158,11 +211,23 @@ def _resolve_recipe_request(request: RunTaskRequest) -> RunTaskRequest:
     if not recipe or not recipe.enabled:
         raise HTTPException(status_code=404, detail=f"Recipe not found: {request.recipe_id}")
 
-    rendered_goal = _render_template(recipe.goal_template, request.recipe_inputs) or request.goal
-    rendered_context = _render_template(recipe.context_template, request.recipe_inputs)
+    render_values = {
+        **request.recipe_inputs,
+        "recipe_id": recipe.id,
+        "recipe_name": recipe.name,
+    }
+    rendered_goal = _render_template(recipe.goal_template, render_values) or request.goal
+    rendered_context = _render_template(recipe.context_template, render_values)
+    rendered_actions = _render_recipe_actions(recipe.action_templates, render_values)
     merged_context = "\n".join(v for v in [request.context, rendered_context] if v)
 
-    return request.model_copy(update={"goal": rendered_goal, "context": merged_context or None})
+    return request.model_copy(
+        update={
+            "goal": rendered_goal,
+            "context": merged_context or None,
+            "recipe_actions": rendered_actions,
+        }
+    )
 
 
 def _send_outbound(
@@ -292,6 +357,7 @@ def create_recipe(request: RecipeCreateRequest, raw_request: Request) -> RecipeD
         goal_template=request.goal_template,
         context_template=request.context_template,
         tags=[t.strip() for t in request.tags if t.strip()],
+        action_templates=request.action_templates,
         enabled=True,
     )
     _recipes[recipe.id] = recipe
