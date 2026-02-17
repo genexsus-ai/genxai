@@ -138,6 +138,7 @@ asyncio_mode = "auto"
 filterwarnings = [
     "ignore:Couldn't import C tracer.*:coverage.exceptions.CoverageWarning",
     "ignore:Exception ignored in.*AsyncHttpxClientWrapper.__del__.*:pytest.PytestUnraisableExceptionWarning",
+    "ignore:.*app' shortcut is now deprecated.*WSGITransport.*:DeprecationWarning:httpx.*",
 ]
 
 [tool.black]
