@@ -8,6 +8,16 @@ from genxai.core.agent import (
     AgentRuntime,
     AgentType,
 )
+from genxai.core.artifacts import (
+    Artifact,
+    ArtifactKind,
+    ArtifactPayload,
+    CommandOutputArtifactPayload,
+    DiagnosticsArtifactPayload,
+    DiffArtifactPayload,
+    PlanSummaryArtifactPayload,
+    SummaryArtifactPayload,
+)
 from genxai.core.graph import (
     Edge,
     EnhancedGraph,
@@ -26,6 +36,14 @@ __all__ = [
     "AgentRegistry",
     "AgentRuntime",
     "AgentType",
+    "Artifact",
+    "ArtifactKind",
+    "ArtifactPayload",
+    "DiffArtifactPayload",
+    "CommandOutputArtifactPayload",
+    "PlanSummaryArtifactPayload",
+    "DiagnosticsArtifactPayload",
+    "SummaryArtifactPayload",
     "Graph",
     "EnhancedGraph",
     "WorkflowExecutor",

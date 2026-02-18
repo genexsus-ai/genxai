@@ -161,6 +161,7 @@ async def test_memory_stats():
     assert stats["agent_id"] == "test_agent"
     assert "short_term" in stats
     assert "working" in stats
+    assert "backend_plugins" in stats
 
 
 @pytest.mark.asyncio
@@ -222,6 +223,9 @@ async def test_memory_persistence_round_trip(tmp_path: Path):
     procedure = await reloaded.procedural.retrieve_procedure(name="demo")
     assert procedure is not None
 
+    stats = await reloaded.get_stats()
+    assert "sqlite" in stats.get("backend_plugins", {})
+
 
 @pytest.mark.asyncio
 async def test_long_term_memory_persistence(tmp_path: Path):
@@ -267,6 +271,11 @@ async def test_graph_backed_episodic_persistence_queries():
     similar = await memory.episodic.retrieve_similar_tasks("deploy", limit=5)  # type: ignore[union-attr]
     assert len(similar) >= 1
 
+    stats = await memory.get_stats()
+    episodic_stats = stats.get("episodic", {})
+    assert "backend_telemetry" in episodic_stats
+    assert episodic_stats["backend_telemetry"]["backend"] == "neo4j"
+
 
 @pytest.mark.asyncio
 async def test_graph_backed_semantic_persistence_queries():
@@ -285,6 +294,11 @@ async def test_graph_backed_semantic_persistence_queries():
 
     by_object = await memory.semantic.retrieve_by_object("healthy")  # type: ignore[union-attr]
     assert len(by_object) == 1
+
+    stats = await memory.get_stats()
+    semantic_stats = stats.get("semantic", {})
+    assert "backend_telemetry" in semantic_stats
+    assert semantic_stats["backend_telemetry"]["backend"] == "neo4j"
 
 
 @pytest.mark.asyncio

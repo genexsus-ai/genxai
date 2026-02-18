@@ -16,6 +16,7 @@ from genxai.core.memory.working import WorkingMemory
 from genxai.core.memory.vector_store import VectorStoreFactory
 from genxai.core.memory.embedding import EmbeddingServiceFactory
 from genxai.core.memory.persistence import MemoryPersistenceConfig
+from genxai.core.memory.backends import MemoryBackendPlugin, MemoryBackendRegistry
 from genxai.utils.tokens import truncate_to_token_limit
 
 logger = logging.getLogger(__name__)
@@ -62,6 +63,35 @@ class MemorySystem:
             backend=persistence_backend,
             sqlite_path=persistence_sqlite_path,
         )
+        self._backend_plugins: Dict[str, MemoryBackendPlugin] = {}
+
+        if redis_client is not None:
+            try:
+                self._backend_plugins["redis"] = MemoryBackendRegistry.create(
+                    "redis",
+                    redis_client=redis_client,
+                    key_prefix="genxai:memory:long_term:",
+                )
+            except Exception as exc:
+                logger.warning("Failed to initialize redis backend plugin: %s", exc)
+
+        if self._persistence.enabled and self._persistence.backend == "sqlite":
+            try:
+                self._backend_plugins["sqlite"] = MemoryBackendRegistry.create(
+                    "sqlite",
+                    sqlite_path=self._persistence.resolve_sqlite_path(),
+                )
+            except Exception as exc:
+                logger.warning("Failed to initialize sqlite backend plugin: %s", exc)
+
+        if graph_db is not None:
+            try:
+                self._backend_plugins["neo4j"] = MemoryBackendRegistry.create(
+                    "neo4j",
+                    graph_db=graph_db,
+                )
+            except Exception as exc:
+                logger.warning("Failed to initialize neo4j backend plugin: %s", exc)
 
         # Rolling-summary state for prompt-memory compression
         self.rolling_summary: str = ""
@@ -102,6 +132,8 @@ class MemorySystem:
                     vector_store=self.vector_store,
                     embedding_service=self.embedding_service,
                     persistence=self._persistence,
+                    backend_plugin=self._backend_plugins.get("redis")
+                    or self._backend_plugins.get("sqlite"),
                 )
                 logger.info("Long-term memory initialized with vector store")
             except Exception as e:
@@ -110,18 +142,30 @@ class MemorySystem:
                     config=self.config,
                     redis_client=redis_client,
                     persistence=self._persistence,
+                    backend_plugin=self._backend_plugins.get("redis")
+                    or self._backend_plugins.get("sqlite"),
                 )
 
         # Initialize episodic memory
         self.episodic: Optional[EpisodicMemory] = None
         if self.config.episodic_enabled:
-            self.episodic = EpisodicMemory(graph_db=graph_db, persistence=self._persistence)
+            self.episodic = EpisodicMemory(
+                graph_db=graph_db,
+                persistence=self._persistence,
+                backend_plugin=self._backend_plugins.get("neo4j")
+                or self._backend_plugins.get("sqlite"),
+            )
             logger.info("Episodic memory initialized")
 
         # Initialize semantic memory
         self.semantic: Optional[SemanticMemory] = None
         if self.config.semantic_enabled:
-            self.semantic = SemanticMemory(graph_db=graph_db, persistence=self._persistence)
+            self.semantic = SemanticMemory(
+                graph_db=graph_db,
+                persistence=self._persistence,
+                backend_plugin=self._backend_plugins.get("neo4j")
+                or self._backend_plugins.get("sqlite"),
+            )
             logger.info("Semantic memory initialized")
 
         # Initialize procedural memory
@@ -619,6 +663,10 @@ class MemorySystem:
         stats["persistence"] = {
             "enabled": self._persistence.enabled,
             "path": str(self._persistence.base_dir),
+        }
+
+        stats["backend_plugins"] = {
+            name: plugin.get_stats() for name, plugin in self._backend_plugins.items()
         }
 
         stats["rolling_summary"] = {

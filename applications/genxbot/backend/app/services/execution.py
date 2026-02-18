@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from typing import List, Tuple
 
-from app.schemas import ProposedAction
+from app.schemas import CommandOutputArtifactPayload, DiffArtifactPayload, ProposedAction
 from app.services.policy import SafetyPolicy
 
 
@@ -29,15 +29,26 @@ class ActionExecutor:
         self._retry_attempts = max(retry_attempts, 1)
         self._retry_backoff_seconds = max(retry_backoff_seconds, 0.0)
 
-    def execute(self, action: ProposedAction, workspace_root: str) -> Tuple[str, str]:
-        """Execute approved action and return artifact kind + content."""
+    def execute(
+        self,
+        action: ProposedAction,
+        workspace_root: str,
+    ) -> Tuple[str, str, CommandOutputArtifactPayload | DiffArtifactPayload]:
+        """Execute approved action and return artifact kind + content + typed payload."""
         if action.action_type == "command":
-            return "command_output", self._execute_with_retry(self._execute_command, action, workspace_root)
+            output, payload = self._execute_with_retry(self._execute_command, action, workspace_root)
+            return "command_output", output, payload
         if action.action_type == "edit":
-            return "diff", self._execute_with_retry(self._execute_edit, action, workspace_root)
+            output, payload = self._execute_with_retry(self._execute_edit, action, workspace_root)
+            return "diff", output, payload
         raise ActionExecutionError(f"Unsupported action type: {action.action_type}")
 
-    def _execute_with_retry(self, fn, action: ProposedAction, workspace_root: str) -> str:
+    def _execute_with_retry(
+        self,
+        fn,
+        action: ProposedAction,
+        workspace_root: str,
+    ) -> tuple[str, CommandOutputArtifactPayload | DiffArtifactPayload]:
         last_exc: ActionExecutionError | None = None
         for attempt in range(1, self._retry_attempts + 1):
             try:
@@ -51,7 +62,11 @@ class ActionExecutor:
             raise last_exc
         raise ActionExecutionError("Execution failed unexpectedly")
 
-    def _execute_command(self, action: ProposedAction, workspace_root: str) -> str:
+    def _execute_command(
+        self,
+        action: ProposedAction,
+        workspace_root: str,
+    ) -> tuple[str, CommandOutputArtifactPayload]:
         command = (action.command or "").strip()
         if not command:
             raise ActionExecutionError("Missing command for command action")
@@ -77,11 +92,24 @@ class ActionExecutor:
             raise ActionExecutionError(f"Command executable not found: {argv[0]}") from exc
         except subprocess.TimeoutExpired as exc:
             raise ActionExecutionError("Command timed out after 90 seconds", retryable=True) from exc
-        output = (completed.stdout or "") + ("\n" + completed.stderr if completed.stderr else "")
-        output = output.strip() or "(no output)"
-        return f"$ {command}\nexit_code={completed.returncode}\n\n{output}"
+        stdout = (completed.stdout or "").strip()
+        stderr = (completed.stderr or "").strip()
+        output = ((stdout + ("\n" + stderr if stderr else "")).strip()) or "(no output)"
+        payload = CommandOutputArtifactPayload(
+            command=command,
+            argv=argv,
+            exit_code=completed.returncode,
+            stdout=stdout,
+            stderr=stderr,
+        )
+        content = f"$ {command}\nexit_code={completed.returncode}\n\n{output}"
+        return content, payload
 
-    def _execute_edit(self, action: ProposedAction, workspace_root: str) -> str:
+    def _execute_edit(
+        self,
+        action: ProposedAction,
+        workspace_root: str,
+    ) -> tuple[str, DiffArtifactPayload]:
         file_path = action.file_path or ""
         if not file_path:
             raise ActionExecutionError("Missing file_path for edit action")
@@ -107,11 +135,18 @@ class ActionExecutor:
             )
 
         target.write_text(after, encoding="utf-8")
-        return (
+        content = (
             f"Applied edit to {target}\n"
             f"--- before ({len(before)} chars) ---\n{before[:500]}\n"
             f"--- after ({len(after)} chars) ---\n{after[:500]}"
         )
+        payload = DiffArtifactPayload(
+            file_path=str(target),
+            before=before,
+            after=after,
+            patch=patch_text,
+        )
+        return content, payload
 
     @staticmethod
     def _looks_like_unified_diff(patch_text: str) -> bool:

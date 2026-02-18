@@ -17,9 +17,43 @@ type TimelineEvent = {
 
 type Artifact = {
   id: string
-  kind: 'plan' | 'diff' | 'command_output' | 'summary'
+  kind: 'plan' | 'plan_summary' | 'diff' | 'command_output' | 'summary' | 'diagnostics'
   title: string
   content: string
+  payload?:
+    | {
+        type: 'diff'
+        file_path?: string | null
+        before: string
+        after: string
+        patch?: string | null
+      }
+    | {
+        type: 'command_output'
+        command: string
+        argv: string[]
+        exit_code: number
+        stdout: string
+        stderr: string
+      }
+    | {
+        type: 'plan_summary'
+        steps: string[]
+        objective?: string | null
+        notes?: string | null
+      }
+    | {
+        type: 'diagnostics'
+        level: 'info' | 'warning' | 'error'
+        code?: string | null
+        message: string
+        details: Record<string, unknown>
+      }
+    | {
+        type: 'summary'
+        text: string
+      }
+    | null
 }
 
 type ProposedAction = {
@@ -136,19 +170,6 @@ type OutboundRetryQueueSnapshot = {
 
 const pct = (value: number) => `${(value * 100).toFixed(1)}%`
 const sec = (value: number) => `${value.toFixed(2)}s`
-
-function parseDiffArtifact(content: string): { before: string; after: string } | null {
-  const beforeMarker = '--- before'
-  const afterMarker = '--- after'
-  const beforeIdx = content.indexOf(beforeMarker)
-  const afterIdx = content.indexOf(afterMarker)
-  if (beforeIdx === -1 || afterIdx === -1 || afterIdx <= beforeIdx) {
-    return null
-  }
-  const before = content.slice(beforeIdx + beforeMarker.length, afterIdx).trim()
-  const after = content.slice(afterIdx + afterMarker.length).trim()
-  return { before, after }
-}
 
 function App() {
   const [goal, setGoal] = useState('Add endpoint-level tests for planner API and fix lint issues')
@@ -834,23 +855,47 @@ function App() {
                 <summary>
                   {artifact.title} <span className="pill">{artifact.kind}</span>
                 </summary>
-                {artifact.kind === 'diff' ? (
-                  (() => {
-                    const parsed = parseDiffArtifact(artifact.content)
-                    if (!parsed) return <pre>{artifact.content}</pre>
-                    return (
-                      <div className="diff-grid">
-                        <div>
-                          <h4>Before</h4>
-                          <pre>{parsed.before}</pre>
-                        </div>
-                        <div>
-                          <h4>After</h4>
-                          <pre>{parsed.after}</pre>
-                        </div>
-                      </div>
-                    )
-                  })()
+                {artifact.payload?.type === 'diff' ? (
+                  <div className="diff-grid">
+                    <div>
+                      <h4>Before</h4>
+                      <pre>{artifact.payload.before}</pre>
+                    </div>
+                    <div>
+                      <h4>After</h4>
+                      <pre>{artifact.payload.after}</pre>
+                    </div>
+                  </div>
+                ) : artifact.payload?.type === 'command_output' ? (
+                  <pre>
+                    {`$ ${artifact.payload.command}\nexit_code=${artifact.payload.exit_code}\n\n${
+                      (artifact.payload.stdout + (artifact.payload.stderr ? `\n${artifact.payload.stderr}` : '')).trim() ||
+                      '(no output)'
+                    }`}
+                  </pre>
+                ) : artifact.payload?.type === 'plan_summary' ? (
+                  <>
+                    {artifact.payload.objective && <p><strong>Objective:</strong> {artifact.payload.objective}</p>}
+                    <ul>
+                      {artifact.payload.steps.map((step, idx) => (
+                        <li key={`${artifact.id}-step-${idx}`}>{step}</li>
+                      ))}
+                    </ul>
+                    {artifact.payload.notes && <pre>{artifact.payload.notes}</pre>}
+                  </>
+                ) : artifact.payload?.type === 'diagnostics' ? (
+                  <>
+                    <p>
+                      <strong>{artifact.payload.level.toUpperCase()}</strong>
+                      {artifact.payload.code ? ` · ${artifact.payload.code}` : ''}
+                    </p>
+                    <pre>{artifact.payload.message}</pre>
+                    {Object.keys(artifact.payload.details || {}).length > 0 && (
+                      <pre>{JSON.stringify(artifact.payload.details, null, 2)}</pre>
+                    )}
+                  </>
+                ) : artifact.payload?.type === 'summary' ? (
+                  <pre>{artifact.payload.text}</pre>
                 ) : (
                   <pre>{artifact.content}</pre>
                 )}

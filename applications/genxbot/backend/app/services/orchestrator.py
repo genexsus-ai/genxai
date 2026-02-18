@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import os
 import shutil
 import sys
@@ -12,17 +14,22 @@ from typing import Any, Callable, Optional
 
 from app.config import get_settings
 from app.schemas import (
+    ApprovalCheckpoint,
     ApprovalRequest,
     AuditEntry,
     Artifact,
     ChannelMessageEvent,
+    DiagnosticsArtifactPayload,
+    ConnectorNormalizedEvent,
     ConnectorTriggerRequest,
+    PlanSummaryArtifactPayload,
     EvaluationMetrics,
     PlanStep,
     ProposedAction,
     RerunFailedStepRequest,
     RunSession,
     RunTaskRequest,
+    SummaryArtifactPayload,
     TimelineEvent,
 )
 from app.services.evaluation import compute_evaluation_metrics
@@ -108,6 +115,86 @@ class GenXBotOrchestrator:
                 "title": artifact.title,
             },
         )
+
+    def _action_fingerprint(self, action: ProposedAction) -> str:
+        payload = {
+            "id": action.id,
+            "action_type": action.action_type,
+            "description": action.description,
+            "safe": action.safe,
+            "status": action.status,
+            "command": action.command,
+            "file_path": action.file_path,
+            "patch": action.patch,
+        }
+        return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+
+    def _approval_state_hash(self, run: RunSession) -> str:
+        payload = {
+            "run_id": run.id,
+            "goal": run.goal,
+            "repo_path": run.repo_path,
+            "sandbox_path": run.sandbox_path,
+            "status": run.status,
+            "plan_steps": [
+                {"id": s.id, "title": s.title, "status": s.status, "requires_approval": s.requires_approval}
+                for s in run.plan_steps
+            ],
+            "pending_actions": [
+                {
+                    "id": a.id,
+                    "action_type": a.action_type,
+                    "description": a.description,
+                    "safe": a.safe,
+                    "status": a.status,
+                    "command": a.command,
+                    "file_path": a.file_path,
+                    "patch": a.patch,
+                }
+                for a in run.pending_actions
+            ],
+        }
+        return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+
+    def _set_approval_checkpoint(self, run: RunSession, *, reason: str = "approval_required") -> None:
+        existing = run.approval_checkpoint
+        pending = [a for a in run.pending_actions if a.status == "pending"]
+        if not pending:
+            run.approval_checkpoint = None
+            return
+
+        run.approval_checkpoint = ApprovalCheckpoint(
+            reason=reason,
+            state_hash=self._approval_state_hash(run),
+            pending_action_fingerprints={a.id: self._action_fingerprint(a) for a in pending},
+            pending_action_ids=[a.id for a in pending],
+            timeline_length=len(run.timeline),
+            resume_count=(existing.resume_count if existing else 0),
+            last_resumed_at=(existing.last_resumed_at if existing else None),
+        )
+
+    def _validate_approval_resume(self, run: RunSession, action_id: str) -> tuple[bool, str | None]:
+        checkpoint = run.approval_checkpoint
+        if not checkpoint:
+            return False, "Missing approval checkpoint"
+        if action_id not in checkpoint.pending_action_ids:
+            return False, "Action is not part of checkpoint pending set"
+
+        chosen = next((a for a in run.pending_actions if a.id == action_id), None)
+        if not chosen:
+            return False, "Action not found"
+
+        expected_fp = checkpoint.pending_action_fingerprints.get(action_id)
+        if not expected_fp:
+            return False, "Missing action fingerprint in checkpoint"
+        if self._action_fingerprint(chosen) != expected_fp:
+            return False, "Action fingerprint mismatch with checkpoint"
+
+        current_hash = self._approval_state_hash(run)
+        if current_hash != checkpoint.state_hash:
+            return False, "Run state hash mismatch with checkpoint"
+
+        return True, None
 
     def _prepare_workspace(self, run_id: str, repo_path: str) -> str:
         """Create per-run sandbox workspace if enabled, else use repo path directly."""
@@ -452,6 +539,10 @@ class GenXBotOrchestrator:
         status = "awaiting_approval" if has_gate else "running"
         run.status = status
         run.pending_actions = proposed_actions
+        if has_gate:
+            self._set_approval_checkpoint(run, reason="approval_required")
+        else:
+            run.approval_checkpoint = None
         run.timeline.extend(
             [
                 TimelineEvent(
@@ -504,11 +595,16 @@ class GenXBotOrchestrator:
         self._add_artifact(
             run,
             Artifact(
-                kind="plan",
+                kind="plan_summary",
                 title="Initial execution plan",
                 content=pipeline_output.get(
                     "plan_text",
                     "\n".join(f"- {step.title}" for step in plan_steps),
+                ),
+                payload=PlanSummaryArtifactPayload(
+                    objective=request.goal,
+                    steps=[step.title for step in plan_steps],
+                    notes=pipeline_output.get("plan_text") or None,
                 ),
             ),
         )
@@ -519,6 +615,7 @@ class GenXBotOrchestrator:
                     kind="summary",
                     title="Critic review feedback",
                     content=str(pipeline_output["review"]),
+                    payload=SummaryArtifactPayload(text=str(pipeline_output["review"])),
                 ),
             )
 
@@ -530,44 +627,55 @@ class GenXBotOrchestrator:
         return self._store.create(run)
 
     def create_run_from_connector(self, trigger: ConnectorTriggerRequest) -> RunSession:
-        payload = trigger.payload or {}
-        connector = trigger.connector
+        from app.services.connectors import parse_connector_event
 
-        default_repo = trigger.default_repo_path or "."
+        normalized = parse_connector_event(
+            connector=trigger.connector,
+            event_type=trigger.event_type,
+            payload=trigger.payload or {},
+        )
+        return self.create_run_from_normalized_connector_event(
+            normalized,
+            default_repo_path=trigger.default_repo_path,
+        )
+
+    def create_run_from_normalized_connector_event(
+        self,
+        event: ConnectorNormalizedEvent,
+        default_repo_path: str | None = None,
+    ) -> RunSession:
+        connector = event.connector
+        default_repo = default_repo_path or "."
         actor = f"{connector}_connector"
-        goal = f"Handle {connector} event: {trigger.event_type}"
+        goal = f"Handle {connector} event: {event.event_type}"
         context_parts: list[str] = []
 
         if connector == "github":
-            repo = payload.get("repository", {}).get("full_name")
-            pr_title = payload.get("pull_request", {}).get("title")
-            issue_title = payload.get("issue", {}).get("title")
             goal = (
-                f"Analyze GitHub {trigger.event_type} and prepare code/test updates"
-                f" for {repo or 'repository'}"
+                f"Analyze GitHub {event.event_type} and prepare code/test updates"
+                f" for {event.source_ref or 'repository'}"
             )
-            if pr_title:
-                context_parts.append(f"PR title: {pr_title}")
-            if issue_title:
-                context_parts.append(f"Issue title: {issue_title}")
-
         elif connector == "jira":
-            issue = payload.get("issue", {})
-            key = issue.get("key")
-            summary = issue.get("fields", {}).get("summary")
-            goal = f"Address Jira {trigger.event_type} for {key or 'ticket'}"
-            if summary:
-                context_parts.append(f"Jira summary: {summary}")
-
+            goal = f"Address Jira {event.event_type} for {event.resource_id or 'ticket'}"
         elif connector == "slack":
-            event = payload.get("event", {})
-            text = event.get("text") or payload.get("text")
-            channel = event.get("channel") or payload.get("channel")
-            goal = f"Respond to Slack {trigger.event_type} with coding workflow actions"
-            if channel:
-                context_parts.append(f"Channel: {channel}")
-            if text:
-                context_parts.append(f"Message: {text}")
+            goal = f"Respond to Slack {event.event_type} with coding workflow actions"
+        elif connector == "webhook":
+            goal = (
+                f"Handle webhook event {event.event_type} and map it into coding workflow steps"
+            )
+
+        if event.source_ref:
+            context_parts.append(f"Source: {event.source_ref}")
+        if event.resource_id:
+            context_parts.append(f"Resource: {event.resource_id}")
+        if event.actor_id:
+            context_parts.append(f"Actor: {event.actor_id}")
+        if event.summary:
+            context_parts.append(f"Summary: {event.summary}")
+        if event.text:
+            context_parts.append(f"Text: {event.text}")
+        if event.metadata:
+            context_parts.append(f"Metadata: {json.dumps(event.metadata, default=str)}")
 
         request = RunTaskRequest(
             goal=goal,
@@ -580,7 +688,7 @@ class GenXBotOrchestrator:
             TimelineEvent(
                 agent="connector",
                 event="connector_trigger_received",
-                content=f"{connector}:{trigger.event_type} accepted and converted to run {run.id}",
+                content=f"{connector}:{event.event_type} accepted and converted to run {run.id}",
             )
         )
         self._add_audit(
@@ -588,7 +696,7 @@ class GenXBotOrchestrator:
             actor=actor,
             actor_role="executor",
             action="connector_trigger",
-            detail=f"Connector event {connector}:{trigger.event_type} created run.",
+            detail=f"Connector event {connector}:{event.event_type} created run.",
         )
         run.updated_at = _now()
         return self._store.update(run)
@@ -643,6 +751,7 @@ class GenXBotOrchestrator:
                 kind="summary",
                 title=f"Inbound {event.channel} message",
                 content=event.text,
+                payload=SummaryArtifactPayload(text=event.text),
             ),
         )
         run.updated_at = _now()
@@ -719,6 +828,7 @@ class GenXBotOrchestrator:
 
         run.pending_actions.append(replay)
         run.status = "awaiting_approval"
+        self._set_approval_checkpoint(run, reason="rerun_requested")
         self._emit_lifecycle_event(
             event="action_proposed",
             run=run,
@@ -769,6 +879,9 @@ class GenXBotOrchestrator:
                 kind="summary",
                 title=f"Re-run requested for {target.id}",
                 content="A new pending action was created from the rejected action for retry.",
+                payload=SummaryArtifactPayload(
+                    text="A new pending action was created from the rejected action for retry."
+                ),
             ),
         )
 
@@ -779,6 +892,43 @@ class GenXBotOrchestrator:
         run = self._store.get(run_id)
         if not run:
             return None
+
+        if run.status == "awaiting_approval":
+            if run.approval_checkpoint is None:
+                self._set_approval_checkpoint(run, reason="approval_required")
+            valid_resume, reason = self._validate_approval_resume(run, approval.action_id)
+            if not valid_resume:
+                run.timeline.append(
+                    TimelineEvent(
+                        agent="system",
+                        event="approval_resume_blocked",
+                        content=(
+                            f"Approval resume blocked for action {approval.action_id}: {reason}. "
+                            "Request rerun/replan before retrying."
+                        ),
+                    )
+                )
+                self._add_audit(
+                    run,
+                    actor=approval.actor,
+                    actor_role=approval.actor_role,
+                    action="approval_resume_blocked",
+                    detail=f"Blocked resume for action {approval.action_id}: {reason}",
+                )
+                run.updated_at = _now()
+                return self._store.update(run)
+
+            run.approval_checkpoint.resume_count += 1
+            run.approval_checkpoint.last_resumed_at = _now()
+            self._emit_lifecycle_event(
+                event="approval_resumed",
+                run=run,
+                payload={
+                    "action_id": approval.action_id,
+                    "checkpoint_id": run.approval_checkpoint.id,
+                    "resume_count": run.approval_checkpoint.resume_count,
+                },
+            )
 
         if not self._policy.can_approve(approval.actor_role):
             run.timeline.append(
@@ -833,7 +983,7 @@ class GenXBotOrchestrator:
 
         if approval.approve:
             try:
-                artifact_kind, artifact_content = self._executor.execute(
+                artifact_kind, artifact_content, artifact_payload = self._executor.execute(
                     chosen,
                     workspace_root=run.sandbox_path or run.repo_path,
                 )
@@ -860,6 +1010,7 @@ class GenXBotOrchestrator:
                         kind=artifact_kind,
                         title=f"Result for {chosen.id}",
                         content=artifact_content,
+                        payload=artifact_payload,
                     ),
                 )
             except ActionExecutionError as exc:
@@ -883,14 +1034,24 @@ class GenXBotOrchestrator:
                 self._add_artifact(
                     run,
                     Artifact(
-                        kind="summary",
+                        kind="diagnostics",
                         title=f"Blocked action {chosen.id}",
                         content=str(exc),
+                        payload=DiagnosticsArtifactPayload(
+                            level="error",
+                            code="action_execution_blocked",
+                            message=str(exc),
+                            details={
+                                "action_id": chosen.id,
+                                "action_type": chosen.action_type,
+                            },
+                        ),
                     ),
                 )
 
         all_done = all(action.status in {"executed", "rejected"} for action in run.pending_actions)
         if all_done:
+            run.approval_checkpoint = None
             if run.status == "failed":
                 run.timeline.append(
                     TimelineEvent(
@@ -926,10 +1087,14 @@ class GenXBotOrchestrator:
                     kind="summary",
                     title="Run summary",
                     content="Prototype execution complete. Integrate real tool runners next.",
+                    payload=SummaryArtifactPayload(
+                        text="Prototype execution complete. Integrate real tool runners next."
+                    ),
                 ),
             )
         else:
             run.status = "awaiting_approval"
+            self._set_approval_checkpoint(run, reason="approval_required")
 
         run.updated_at = _now()
         return self._store.update(run)

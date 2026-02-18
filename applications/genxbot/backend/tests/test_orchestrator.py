@@ -39,6 +39,56 @@ def test_create_run_generates_plan_and_pending_actions(tmp_path: Path) -> None:
     assert len(run.plan_steps) == 4
     assert len(run.pending_actions) >= 1
     assert len(run.timeline) >= 2
+    assert run.approval_checkpoint is not None
+    assert run.approval_checkpoint.pending_action_ids
+
+
+def test_approval_checkpoint_tracks_resume_and_clears_on_completion(tmp_path: Path) -> None:
+    orchestrator = build_orchestrator()
+    run = orchestrator.create_run(
+        RunTaskRequest(
+            goal="Checkpoint lifecycle",
+            repo_path=str(tmp_path),
+            recipe_actions=[
+                RecipeActionTemplate(
+                    action_type="edit",
+                    description="write output",
+                    file_path="checkpoint_lifecycle.py",
+                    patch="FULL_FILE_CONTENT:\nprint('ok')\n",
+                )
+            ],
+        )
+    )
+
+    assert run.approval_checkpoint is not None
+    action = run.pending_actions[0]
+    updated = orchestrator.decide_action(run.id, approver_request(action.id, True, "resume + execute"))
+
+    assert updated is not None
+    assert updated.approval_checkpoint is None
+
+
+def test_approval_resume_blocked_on_action_mutation(tmp_path: Path) -> None:
+    orchestrator = build_orchestrator()
+    run = orchestrator.create_run(
+        RunTaskRequest(goal="Replay guard", repo_path=str(tmp_path))
+    )
+
+    assert run.approval_checkpoint is not None
+    action = next(a for a in run.pending_actions if a.action_type == "edit")
+
+    # Mutate pending action after checkpoint creation to simulate nondeterministic drift.
+    action.patch = "FULL_FILE_CONTENT:\nprint('tampered')\n"
+    orchestrator._store.update(run)
+
+    updated = orchestrator.decide_action(
+        run.id,
+        approver_request(action.id, True, "should be blocked by fingerprint mismatch"),
+    )
+    assert updated is not None
+    tampered = next(a for a in updated.pending_actions if a.id == action.id)
+    assert tampered.status == "pending"
+    assert any(evt.event == "approval_resume_blocked" for evt in updated.timeline)
 
 
 def test_lifecycle_hooks_emit_plan_action_approval_and_artifact_events(tmp_path: Path) -> None:
@@ -62,7 +112,7 @@ def test_lifecycle_hooks_emit_plan_action_approval_and_artifact_events(tmp_path:
 
     artifact_events = [evt for evt in emitted if evt["event"] == "artifact_produced"]
     assert artifact_events
-    assert any(evt["payload"]["kind"] == "plan" for evt in artifact_events)
+    assert any(evt["payload"]["kind"] == "plan_summary" for evt in artifact_events)
 
 
 def test_lifecycle_hooks_emit_action_decisions_and_run_terminal_events(tmp_path: Path) -> None:
@@ -139,6 +189,8 @@ def test_approval_executes_action_and_updates_artifacts(tmp_path: Path) -> None:
     assert run.sandbox_path is not None
     action.file_path = str(Path(run.sandbox_path) / "approval_executes.py")
     action.patch = "FULL_FILE_CONTENT:\nprint('ok')\n"
+    orchestrator._set_approval_checkpoint(run, reason="approval_required")
+    orchestrator._store.update(run)
     updated = orchestrator.decide_action(
         run.id,
         approver_request(action.id, True, "Proceed"),
@@ -148,6 +200,36 @@ def test_approval_executes_action_and_updates_artifacts(tmp_path: Path) -> None:
     assert any(a.status == "executed" for a in updated.pending_actions)
     assert len(updated.artifacts) >= 2
     assert any(evt.event == "action_executed" for evt in updated.timeline)
+    executed_artifact = next((a for a in updated.artifacts if a.title == f"Result for {action.id}"), None)
+    assert executed_artifact is not None
+    assert executed_artifact.kind == "diff"
+    assert executed_artifact.payload is not None
+    assert executed_artifact.payload.type == "diff"
+
+
+def test_blocked_action_generates_diagnostics_artifact(tmp_path: Path) -> None:
+    orchestrator = build_orchestrator()
+    run = orchestrator.create_run(
+        RunTaskRequest(goal="Unsafe command test", repo_path=str(tmp_path))
+    )
+
+    cmd_action = next(a for a in run.pending_actions if a.action_type == "command")
+    cmd_action.command = "pytest -q && echo hacked"
+    orchestrator._set_approval_checkpoint(run, reason="approval_required")
+    orchestrator._store.update(run)
+
+    updated = orchestrator.decide_action(
+        run.id,
+        approver_request(cmd_action.id, True, "try unsafe"),
+    )
+
+    assert updated is not None
+    diagnostics = [a for a in updated.artifacts if a.kind == "diagnostics"]
+    assert diagnostics
+    payload = diagnostics[-1].payload
+    assert payload is not None
+    assert payload.type == "diagnostics"
+    assert payload.level == "error"
 
 
 def test_approval_executes_real_edit_within_workspace(tmp_path: Path) -> None:
@@ -160,6 +242,8 @@ def test_approval_executes_real_edit_within_workspace(tmp_path: Path) -> None:
     assert run.sandbox_path is not None
     edit_action.file_path = str(Path(run.sandbox_path) / "genxbot_output.py")
     edit_action.patch = "FULL_FILE_CONTENT:\nprint('hello from genxbot')\n"
+    orchestrator._set_approval_checkpoint(run, reason="approval_required")
+    orchestrator._store.update(run)
 
     updated = orchestrator.decide_action(
         run.id,
@@ -194,6 +278,8 @@ def test_approval_applies_unified_diff_patch(tmp_path: Path) -> None:
         "-print('old')\n"
         "+print('new')\n"
     )
+    orchestrator._set_approval_checkpoint(run, reason="approval_required")
+    orchestrator._store.update(run)
 
     updated = orchestrator.decide_action(
         run.id,
@@ -213,6 +299,8 @@ def test_command_with_shell_operator_is_blocked(tmp_path: Path) -> None:
 
     cmd_action = next(a for a in run.pending_actions if a.action_type == "command")
     cmd_action.command = "pytest -q && echo hacked"
+    orchestrator._set_approval_checkpoint(run, reason="approval_required")
+    orchestrator._store.update(run)
 
     updated = orchestrator.decide_action(
         run.id,
@@ -244,6 +332,8 @@ def test_run_executes_edits_inside_sandbox_not_source(tmp_path: Path) -> None:
     edit_action = next(a for a in run.pending_actions if a.action_type == "edit")
     edit_action.file_path = str(sandbox_file)
     edit_action.patch = "FULL_FILE_CONTENT:\nprint('sandbox')\n"
+    orchestrator._set_approval_checkpoint(run, reason="approval_required")
+    orchestrator._store.update(run)
 
     updated = orchestrator.decide_action(
         run.id,
@@ -444,6 +534,41 @@ def test_github_trigger_creates_run(tmp_path: Path) -> None:
         assert response.status_code == 200
         payload = response.json()
         assert payload["connector"] == "github"
+        assert payload["run"]["id"].startswith("run_")
+        assert any(evt["event"] == "connector_trigger_received" for evt in payload["run"]["timeline"])
+    finally:
+        runs_routes._orchestrator = original_orchestrator
+
+
+def test_webhook_trigger_creates_run(tmp_path: Path) -> None:
+    orchestrator = build_orchestrator()
+
+    original_orchestrator = runs_routes._orchestrator
+    runs_routes._orchestrator = orchestrator
+    try:
+        client = TestClient(create_app())
+        response = client.post(
+            "/api/v1/runs/triggers/webhook",
+            json={
+                "connector": "webhook",
+                "event_type": "deployment.failed",
+                "default_repo_path": str(tmp_path),
+                "payload": {
+                    "provider": "generic",
+                    "webhook_id": "wh_99",
+                    "actor": {"id": "bot-ops"},
+                    "source": {"ref": "genexsus-ai/genxai"},
+                    "resource": {"id": "deploy-321"},
+                    "summary": "Deployment failed",
+                    "text": "Rollback suggested",
+                },
+            },
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["connector"] == "webhook"
+        assert payload["normalized_event"]["connector"] == "webhook"
+        assert payload["normalized_event"]["event_type"] == "deployment.failed"
         assert payload["run"]["id"].startswith("run_")
         assert any(evt["event"] == "connector_trigger_received" for evt in payload["run"]["timeline"])
     finally:
@@ -1524,7 +1649,7 @@ def test_admin_audit_retention_stats_and_clear() -> None:
         runs_routes._admin_audit._entries = original_entries
 
 
-def test_channel_maintenance_mode_blocks_ingest_and_can_be_toggled() -> None:
+def test_channel_maintenance_mode_blocks_ingest_and_can_be_toggled(tmp_path: Path) -> None:
     orchestrator = build_orchestrator()
 
     original_orchestrator = runs_routes._orchestrator
@@ -1609,7 +1734,7 @@ def test_channel_maintenance_mode_blocks_ingest_and_can_be_toggled() -> None:
             json={
                 "channel": "slack",
                 "event_type": "message",
-                "default_repo_path": ".",
+                "default_repo_path": str(tmp_path),
                 "payload": {
                     "event": {
                         "type": "message",

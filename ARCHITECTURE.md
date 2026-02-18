@@ -301,6 +301,22 @@ Robust state handling across workflow executions.
 - State versioning
 - Rollback capabilities
 
+### 7. Artifact Schema Standardization
+
+GenXAI now defines a shared typed artifact contract in `genxai/core/artifacts.py`
+to support consistent rendering and downstream processing across products.
+
+**Standard artifact payloads:**
+- `diff` (before/after/patch)
+- `command_output` (command, argv, exit_code, stdout/stderr)
+- `plan_summary` (objective, steps, notes)
+- `diagnostics` (level, code, message, details)
+- `summary` (free-form text)
+
+This schema is intended as a framework-level standard so UI layers (for example,
+GenXBot frontend) can render artifacts by payload type rather than using custom
+string parsing.
+
 ---
 
 ## Technology Stack

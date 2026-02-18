@@ -12,6 +12,7 @@ from genxai.core.memory.persistence import (
     SqliteMemoryStore,
     create_memory_store,
 )
+from genxai.core.memory.backends import MemoryBackendPlugin
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +102,7 @@ class SemanticMemory:
         self,
         graph_db: Optional[Any] = None,
         persistence: Optional[MemoryPersistenceConfig] = None,
+        backend_plugin: Optional[MemoryBackendPlugin] = None,
     ) -> None:
         """Initialize semantic memory.
 
@@ -110,6 +112,7 @@ class SemanticMemory:
         self._graph_db = graph_db
         self._use_graph = graph_db is not None
         self._persistence = persistence
+        self._backend_plugin = backend_plugin
         if persistence:
             self._store = create_memory_store(persistence)
         else:
@@ -430,6 +433,7 @@ class SemanticMemory:
                 "total_facts": 0,
                 "backend": "graph" if self._use_graph else "in-memory",
                 "persistence": bool(self._persistence and self._persistence.enabled),
+                "backend_telemetry": self._backend_plugin.get_stats() if self._backend_plugin else None,
             }
 
         facts = list(self._facts.values())
@@ -444,6 +448,7 @@ class SemanticMemory:
             "newest_fact": max(f.timestamp for f in facts).isoformat(),
             "backend": "graph" if self._use_graph else "in-memory",
             "persistence": bool(self._persistence and self._persistence.enabled),
+            "backend_telemetry": self._backend_plugin.get_stats() if self._backend_plugin else None,
         }
 
     def _persist(self) -> None:

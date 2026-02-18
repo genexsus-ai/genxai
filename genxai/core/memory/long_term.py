@@ -14,6 +14,10 @@ from genxai.core.memory.persistence import (
 )
 from genxai.core.memory.vector_store import VectorStore
 from genxai.core.memory.embedding import EmbeddingService
+from genxai.core.memory.backends import (
+    MemoryBackendPlugin,
+    RedisMemoryBackendPlugin,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +37,7 @@ class LongTermMemory:
         vector_store: Optional[VectorStore] = None,
         embedding_service: Optional[EmbeddingService] = None,
         persistence: Optional[MemoryPersistenceConfig] = None,
+        backend_plugin: Optional[MemoryBackendPlugin] = None,
     ) -> None:
         """Initialize long-term memory.
 
@@ -47,6 +52,7 @@ class LongTermMemory:
         self._vector_store = vector_store
         self._embedding_service = embedding_service
         self._persistence = persistence
+        self._backend_plugin = backend_plugin
         if persistence:
             self._store = create_memory_store(persistence)
         else:
@@ -58,6 +64,11 @@ class LongTermMemory:
         
         if self._use_redis:
             logger.info("Initialized long-term memory with Redis backend")
+            if self._backend_plugin is None:
+                self._backend_plugin = RedisMemoryBackendPlugin(
+                    redis_client=self._redis,
+                    key_prefix=self._key_prefix,
+                )
         else:
             logger.warning(
                 "Redis client not provided. Using in-memory storage. "
@@ -322,6 +333,7 @@ class LongTermMemory:
                 "avg_importance": 0.0,
                 "vector_store": bool(self._vector_store),
                 "persistence": bool(self._persistence and self._persistence.enabled),
+                "backend_telemetry": self._backend_plugin.get_stats() if self._backend_plugin else None,
             }
         
         # Get sample of memories for stats
@@ -346,6 +358,7 @@ class LongTermMemory:
                 "size": size,
                 "backend": "redis" if self._use_redis else "in-memory",
                 "avg_importance": 0.0,
+                "backend_telemetry": self._backend_plugin.get_stats() if self._backend_plugin else None,
             }
         
         return {
@@ -356,6 +369,7 @@ class LongTermMemory:
             "newest_memory": max(m.timestamp for m in memories).isoformat(),
             "vector_store": bool(self._vector_store),
             "persistence": bool(self._persistence and self._persistence.enabled),
+            "backend_telemetry": self._backend_plugin.get_stats() if self._backend_plugin else None,
         }
 
     async def store_with_embedding(self, memory: Memory, ttl: Optional[int] = None) -> None:

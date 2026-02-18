@@ -13,6 +13,7 @@ from genxai.core.memory.persistence import (
     SqliteMemoryStore,
     create_memory_store,
 )
+from genxai.core.memory.backends import MemoryBackendPlugin
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +101,7 @@ class EpisodicMemory:
         graph_db: Optional[Any] = None,
         max_episodes: int = 1000,
         persistence: Optional[MemoryPersistenceConfig] = None,
+        backend_plugin: Optional[MemoryBackendPlugin] = None,
     ) -> None:
         """Initialize episodic memory.
 
@@ -111,6 +113,7 @@ class EpisodicMemory:
         self._max_episodes = max_episodes
         self._use_graph = graph_db is not None
         self._persistence = persistence
+        self._backend_plugin = backend_plugin
         if persistence:
             self._store = create_memory_store(persistence)
         else:
@@ -405,6 +408,7 @@ class EpisodicMemory:
                 "total_episodes": 0,
                 "backend": "graph" if self._use_graph else "in-memory",
                 "persistence": bool(self._persistence and self._persistence.enabled),
+                "backend_telemetry": self._backend_plugin.get_stats() if self._backend_plugin else None,
             }
 
         episodes = list(self._episodes.values())
@@ -421,6 +425,7 @@ class EpisodicMemory:
             "newest_episode": max(ep.timestamp for ep in episodes).isoformat(),
             "backend": "graph" if self._use_graph else "in-memory",
             "persistence": bool(self._persistence and self._persistence.enabled),
+            "backend_telemetry": self._backend_plugin.get_stats() if self._backend_plugin else None,
         }
 
     def _persist(self) -> None:

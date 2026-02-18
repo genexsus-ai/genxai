@@ -8,6 +8,15 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
+from genxai.core.artifacts import (
+    Artifact as CoreArtifact,
+    CommandOutputArtifactPayload,
+    DiagnosticsArtifactPayload,
+    DiffArtifactPayload,
+    PlanSummaryArtifactPayload,
+    SummaryArtifactPayload,
+)
+
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -57,15 +66,30 @@ class RecipeListResponse(BaseModel):
 
 
 class ConnectorTriggerRequest(BaseModel):
-    connector: Literal["github", "jira", "slack"]
+    connector: Literal["github", "jira", "slack", "webhook"]
     event_type: str
     payload: dict
     default_repo_path: Optional[str] = None
 
 
-class ConnectorTriggerResponse(BaseModel):
-    connector: Literal["github", "jira", "slack"]
+class ConnectorNormalizedEvent(BaseModel):
+    """Normalized inbound connector event passed into orchestration."""
+
+    connector: Literal["github", "jira", "slack", "webhook"]
     event_type: str
+    actor_id: Optional[str] = None
+    source_ref: Optional[str] = None
+    resource_id: Optional[str] = None
+    summary: Optional[str] = None
+    text: Optional[str] = None
+    metadata: dict = Field(default_factory=dict)
+    raw_payload: dict = Field(default_factory=dict)
+
+
+class ConnectorTriggerResponse(BaseModel):
+    connector: Literal["github", "jira", "slack", "webhook"]
+    event_type: str
+    normalized_event: ConnectorNormalizedEvent
     run: "RunSession"
 
 
@@ -239,11 +263,8 @@ class AuditEntry(BaseModel):
     detail: str
 
 
-class Artifact(BaseModel):
-    id: str = Field(default_factory=lambda: f"artifact_{uuid4().hex[:8]}")
-    kind: Literal["plan", "diff", "command_output", "summary"]
-    title: str
-    content: str
+class Artifact(CoreArtifact):
+    """GenXBot artifact wrapper around shared core schema."""
 
 
 class ProposedAction(BaseModel):
@@ -257,6 +278,20 @@ class ProposedAction(BaseModel):
     patch: Optional[str] = None
 
 
+class ApprovalCheckpoint(BaseModel):
+    """Serialized pause checkpoint for external approval gates."""
+
+    id: str = Field(default_factory=lambda: f"apc_{uuid4().hex[:10]}")
+    created_at: str = Field(default_factory=utc_now_iso)
+    reason: str = "approval_required"
+    state_hash: str
+    pending_action_fingerprints: dict[str, str] = Field(default_factory=dict)
+    pending_action_ids: list[str] = Field(default_factory=list)
+    timeline_length: int = 0
+    resume_count: int = 0
+    last_resumed_at: Optional[str] = None
+
+
 class RunSession(BaseModel):
     id: str = Field(default_factory=lambda: f"run_{uuid4().hex[:10]}")
     goal: str
@@ -268,6 +303,7 @@ class RunSession(BaseModel):
     audit_log: list[AuditEntry] = Field(default_factory=list)
     artifacts: list[Artifact] = Field(default_factory=list)
     pending_actions: list[ProposedAction] = Field(default_factory=list)
+    approval_checkpoint: Optional[ApprovalCheckpoint] = None
     memory_summary: str = ""
     created_at: str = Field(default_factory=utc_now_iso)
     updated_at: str = Field(default_factory=utc_now_iso)

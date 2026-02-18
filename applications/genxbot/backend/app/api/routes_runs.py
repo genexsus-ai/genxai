@@ -45,6 +45,7 @@ from app.schemas import (
 )
 from app.services.channels import parse_channel_event
 from app.services.channels import parse_channel_command
+from app.services.connectors import parse_connector_event
 from app.services.channel_outbound import (
     ChannelOutboundService,
     format_outbound_action_decision,
@@ -433,10 +434,19 @@ def trigger_connector_run(
             status_code=400,
             detail="Path connector and payload connector mismatch",
         )
-    run = orchestrator.create_run_from_connector(request)
+    normalized_event = parse_connector_event(
+        connector=request.connector,
+        event_type=request.event_type,
+        payload=request.payload or {},
+    )
+    run = orchestrator.create_run_from_normalized_connector_event(
+        normalized_event,
+        default_repo_path=request.default_repo_path,
+    )
     return ConnectorTriggerResponse(
         connector=request.connector,
         event_type=request.event_type,
+        normalized_event=normalized_event,
         run=run,
     )
 
