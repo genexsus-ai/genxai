@@ -6,7 +6,7 @@ import time
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-from app.schemas import ApprovalRequest, RerunFailedStepRequest, RunTaskRequest
+from app.schemas import ApprovalRequest, RecipeActionTemplate, RerunFailedStepRequest, RunTaskRequest
 from app.services.orchestrator import GenXBotOrchestrator
 import app.api.routes_runs as runs_routes
 from app.services.policy import SafetyPolicy
@@ -39,6 +39,94 @@ def test_create_run_generates_plan_and_pending_actions(tmp_path: Path) -> None:
     assert len(run.plan_steps) == 4
     assert len(run.pending_actions) >= 1
     assert len(run.timeline) >= 2
+
+
+def test_lifecycle_hooks_emit_plan_action_approval_and_artifact_events(tmp_path: Path) -> None:
+    orchestrator = build_orchestrator()
+    emitted: list[dict] = []
+    orchestrator.register_lifecycle_hook(lambda evt: emitted.append(evt))
+
+    run = orchestrator.create_run(
+        RunTaskRequest(goal="Lifecycle hook test", repo_path=str(tmp_path))
+    )
+
+    event_names = [evt["event"] for evt in emitted]
+    assert "plan_created" in event_names
+    assert "action_proposed" in event_names
+    assert "approval_required" in event_names
+    assert "artifact_produced" in event_names
+
+    plan_event = next(evt for evt in emitted if evt["event"] == "plan_created")
+    assert plan_event["run_id"] == run.id
+    assert plan_event["payload"]["plan_step_count"] == len(run.plan_steps)
+
+    artifact_events = [evt for evt in emitted if evt["event"] == "artifact_produced"]
+    assert artifact_events
+    assert any(evt["payload"]["kind"] == "plan" for evt in artifact_events)
+
+
+def test_lifecycle_hooks_emit_action_decisions_and_run_terminal_events(tmp_path: Path) -> None:
+    orchestrator = build_orchestrator()
+    emitted: list[dict] = []
+    orchestrator.register_lifecycle_hook(lambda evt: emitted.append(evt))
+
+    run = orchestrator.create_run(
+        RunTaskRequest(
+            goal="Lifecycle terminal events",
+            repo_path=str(tmp_path),
+            recipe_actions=[
+                RecipeActionTemplate(
+                    action_type="edit",
+                    description="Write lifecycle output",
+                    file_path="lifecycle_hook_output.py",
+                    patch="FULL_FILE_CONTENT:\nprint('lifecycle')\n",
+                )
+            ],
+        )
+    )
+
+    action = run.pending_actions[0]
+    updated = orchestrator.decide_action(
+        run.id,
+        approver_request(action.id, True, "approve lifecycle action"),
+    )
+    assert updated is not None
+
+    event_names = [evt["event"] for evt in emitted]
+    assert "action_approved" in event_names
+    assert "action_executed" in event_names
+    assert "artifact_produced" in event_names
+    assert "run_completed" in event_names
+
+
+def test_lifecycle_hooks_emit_action_rejected_event(tmp_path: Path) -> None:
+    orchestrator = build_orchestrator()
+    emitted: list[dict] = []
+    orchestrator.register_lifecycle_hook(lambda evt: emitted.append(evt))
+
+    run = orchestrator.create_run(
+        RunTaskRequest(
+            goal="Lifecycle rejection",
+            repo_path=str(tmp_path),
+            recipe_actions=[
+                RecipeActionTemplate(
+                    action_type="command",
+                    description="Reject lifecycle action",
+                    command="pytest -q",
+                )
+            ],
+        )
+    )
+
+    action = run.pending_actions[0]
+    updated = orchestrator.decide_action(
+        run.id,
+        approver_request(action.id, False, "reject lifecycle action"),
+    )
+    assert updated is not None
+
+    event_names = [evt["event"] for evt in emitted]
+    assert "action_rejected" in event_names
 
 
 def test_approval_executes_action_and_updates_artifacts(tmp_path: Path) -> None:

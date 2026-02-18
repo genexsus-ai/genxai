@@ -8,7 +8,7 @@ import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from app.config import get_settings
 from app.schemas import (
@@ -63,6 +63,51 @@ class GenXBotOrchestrator:
             retry_backoff_seconds=self._settings.action_retry_backoff_seconds,
         )
         self._genxai_runtime_ctx: dict[str, dict[str, Any]] = {}
+        self._lifecycle_hooks: list[Callable[[dict[str, Any]], None]] = []
+
+    def register_lifecycle_hook(self, callback: Callable[[dict[str, Any]], None]) -> None:
+        """Register a callback for standardized orchestration lifecycle events."""
+        self._lifecycle_hooks.append(callback)
+
+    def clear_lifecycle_hooks(self) -> None:
+        """Remove all registered lifecycle callbacks."""
+        self._lifecycle_hooks.clear()
+
+    def _emit_lifecycle_event(
+        self,
+        *,
+        event: str,
+        run: RunSession,
+        payload: dict[str, Any] | None = None,
+    ) -> None:
+        if not self._lifecycle_hooks:
+            return
+
+        envelope = {
+            "event": event,
+            "run_id": run.id,
+            "run_status": run.status,
+            "timestamp": _now(),
+            "payload": payload or {},
+        }
+        for hook in list(self._lifecycle_hooks):
+            try:
+                hook(envelope)
+            except Exception:
+                # Hooks are optional side-effect adapters and must never break orchestration.
+                continue
+
+    def _add_artifact(self, run: RunSession, artifact: Artifact) -> None:
+        run.artifacts.append(artifact)
+        self._emit_lifecycle_event(
+            event="artifact_produced",
+            run=run,
+            payload={
+                "artifact_id": artifact.id,
+                "kind": artifact.kind,
+                "title": artifact.title,
+            },
+        )
 
     def _prepare_workspace(self, run_id: str, repo_path: str) -> str:
         """Create per-run sandbox workspace if enabled, else use repo path directly."""
@@ -421,6 +466,34 @@ class GenXBotOrchestrator:
                 ),
             ]
         )
+        self._emit_lifecycle_event(
+            event="plan_created",
+            run=run,
+            payload={
+                "plan_step_ids": [step.id for step in run.plan_steps],
+                "plan_step_count": len(run.plan_steps),
+            },
+        )
+        for action in proposed_actions:
+            self._emit_lifecycle_event(
+                event="action_proposed",
+                run=run,
+                payload={
+                    "action_id": action.id,
+                    "action_type": action.action_type,
+                    "description": action.description,
+                    "safe": action.safe,
+                },
+            )
+        if has_gate:
+            self._emit_lifecycle_event(
+                event="approval_required",
+                run=run,
+                payload={
+                    "pending_action_ids": [a.id for a in proposed_actions],
+                    "pending_actions": len(proposed_actions),
+                },
+            )
         self._add_audit(
             run,
             actor=request.requested_by,
@@ -428,7 +501,8 @@ class GenXBotOrchestrator:
             action="run_created",
             detail=f"Run created for goal: {request.goal}",
         )
-        run.artifacts.append(
+        self._add_artifact(
+            run,
             Artifact(
                 kind="plan",
                 title="Initial execution plan",
@@ -436,15 +510,16 @@ class GenXBotOrchestrator:
                     "plan_text",
                     "\n".join(f"- {step.title}" for step in plan_steps),
                 ),
-            )
+            ),
         )
         if pipeline_output.get("review"):
-            run.artifacts.append(
+            self._add_artifact(
+                run,
                 Artifact(
                     kind="summary",
                     title="Critic review feedback",
                     content=str(pipeline_output["review"]),
-                )
+                ),
             )
 
         run.memory_summary = (
@@ -562,12 +637,13 @@ class GenXBotOrchestrator:
             action="channel_event",
             detail=f"Inbound {event.channel} event {event.event_type} created run.",
         )
-        run.artifacts.append(
+        self._add_artifact(
+            run,
             Artifact(
                 kind="summary",
                 title=f"Inbound {event.channel} message",
                 content=event.text,
-            )
+            ),
         )
         run.updated_at = _now()
         return self._store.update(run)
@@ -643,6 +719,26 @@ class GenXBotOrchestrator:
 
         run.pending_actions.append(replay)
         run.status = "awaiting_approval"
+        self._emit_lifecycle_event(
+            event="action_proposed",
+            run=run,
+            payload={
+                "action_id": replay.id,
+                "action_type": replay.action_type,
+                "description": replay.description,
+                "safe": replay.safe,
+                "replay_of_action_id": target.id,
+            },
+        )
+        self._emit_lifecycle_event(
+            event="approval_required",
+            run=run,
+            payload={
+                "pending_action_ids": [a.id for a in run.pending_actions if a.status == "pending"],
+                "pending_actions": len([a for a in run.pending_actions if a.status == "pending"]),
+                "reason": "rerun_requested",
+            },
+        )
 
         if request.step_id:
             for step in run.plan_steps:
@@ -667,12 +763,13 @@ class GenXBotOrchestrator:
             action="rerun_requested",
             detail=f"Retry action {replay.id} created from {target.id}.",
         )
-        run.artifacts.append(
+        self._add_artifact(
+            run,
             Artifact(
                 kind="summary",
                 title=f"Re-run requested for {target.id}",
                 content="A new pending action was created from the rejected action for retry.",
-            )
+            ),
         )
 
         run.updated_at = _now()
@@ -706,6 +803,16 @@ class GenXBotOrchestrator:
             return run
 
         chosen.status = "approved" if approval.approve else "rejected"
+        self._emit_lifecycle_event(
+            event="action_approved" if approval.approve else "action_rejected",
+            run=run,
+            payload={
+                "action_id": chosen.id,
+                "comment": approval.comment,
+                "actor": approval.actor,
+                "actor_role": approval.actor_role,
+            },
+        )
         run.timeline.append(
             TimelineEvent(
                 agent="user",
@@ -738,15 +845,26 @@ class GenXBotOrchestrator:
                         content=f"Executed {chosen.action_type}: {chosen.description}",
                     )
                 )
-                run.artifacts.append(
+                self._emit_lifecycle_event(
+                    event="action_executed",
+                    run=run,
+                    payload={
+                        "action_id": chosen.id,
+                        "action_type": chosen.action_type,
+                        "description": chosen.description,
+                    },
+                )
+                self._add_artifact(
+                    run,
                     Artifact(
                         kind=artifact_kind,
                         title=f"Result for {chosen.id}",
                         content=artifact_content,
-                    )
+                    ),
                 )
             except ActionExecutionError as exc:
                 chosen.status = "rejected"
+                run.status = "failed"
                 run.timeline.append(
                     TimelineEvent(
                         agent="executor",
@@ -754,30 +872,61 @@ class GenXBotOrchestrator:
                         content=f"Blocked execution for {chosen.id}: {exc}",
                     )
                 )
-                run.artifacts.append(
+                self._emit_lifecycle_event(
+                    event="run_failed",
+                    run=run,
+                    payload={
+                        "action_id": chosen.id,
+                        "reason": str(exc),
+                    },
+                )
+                self._add_artifact(
+                    run,
                     Artifact(
                         kind="summary",
                         title=f"Blocked action {chosen.id}",
                         content=str(exc),
-                    )
+                    ),
                 )
 
         all_done = all(action.status in {"executed", "rejected"} for action in run.pending_actions)
         if all_done:
-            run.status = "completed"
-            run.timeline.append(
-                TimelineEvent(
-                    agent="reviewer",
-                    event="run_completed",
-                    content="Run completed with all actions resolved.",
+            if run.status == "failed":
+                run.timeline.append(
+                    TimelineEvent(
+                        agent="reviewer",
+                        event="run_failed",
+                        content="Run failed after blocked execution.",
+                    )
                 )
-            )
-            run.artifacts.append(
+                self._emit_lifecycle_event(
+                    event="run_failed",
+                    run=run,
+                    payload={"reason": "action_blocked"},
+                )
+            else:
+                run.status = "completed"
+                run.timeline.append(
+                    TimelineEvent(
+                        agent="reviewer",
+                        event="run_completed",
+                        content="Run completed with all actions resolved.",
+                    )
+                )
+                self._emit_lifecycle_event(
+                    event="run_completed",
+                    run=run,
+                    payload={
+                        "resolved_actions": len(run.pending_actions),
+                    },
+                )
+            self._add_artifact(
+                run,
                 Artifact(
                     kind="summary",
                     title="Run summary",
                     content="Prototype execution complete. Integrate real tool runners next.",
-                )
+                ),
             )
         else:
             run.status = "awaiting_approval"
