@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Documentation
 - Documented OSS availability of enterprise-grade runtime features (connectors, triggers, observability, security, CLI extensions, worker queue engine) while keeping Studio enterprise-only.
+- Updated GenXBot docs to reflect full recipe-template integration: `recipe_id`/`recipe_inputs` rendering, blending recipe + agent-generated actions, deduplication, and fallback action guarantees.
+- Added implementation/test references for recipe blending behavior in GenXBot docs (`orchestrator.py`, `routes_runs.py`, and orchestrator blend tests).
+- Expanded GenXBot observability docs with structured hooks for plan latency, tool execution attempts, safety decisions, and retry/failure events.
+- Added usage/setup examples for recipe-templated runs and observability verification endpoints.
 
 ## [0.1.6] - 2026-02-13
 ### Added

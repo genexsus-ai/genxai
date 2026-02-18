@@ -2157,3 +2157,50 @@ def test_create_run_with_recipe_loads_executable_actions(tmp_path: Path) -> None
         runs_routes._recipes.clear()
         runs_routes._recipes.update(original_recipes)
         runs_routes._orchestrator = original_orchestrator
+
+
+def test_create_run_blends_recipe_action_with_fallback_action_type(tmp_path: Path) -> None:
+    orchestrator = build_orchestrator()
+    run = orchestrator.create_run(
+        RunTaskRequest(
+            goal="Blend recipe with fallback",
+            repo_path=str(tmp_path),
+            recipe_actions=[
+                RecipeActionTemplate(
+                    action_type="edit",
+                    description="Recipe edit",
+                    file_path="recipe_only.py",
+                    patch="FULL_FILE_CONTENT:\nprint('recipe')\n",
+                )
+            ],
+        )
+    )
+
+    action_types = {a.action_type for a in run.pending_actions}
+    assert "edit" in action_types
+    assert "command" in action_types
+    assert any(a.description == "Recipe edit" for a in run.pending_actions)
+
+
+def test_create_run_blend_actions_deduplicates_same_recipe_and_agent_command(tmp_path: Path) -> None:
+    orchestrator = build_orchestrator()
+    recipe_actions = [
+        RecipeActionTemplate(
+            action_type="command",
+            description="Recipe pytest",
+            command="pytest -q",
+        )
+    ]
+
+    run = orchestrator.create_run(
+        RunTaskRequest(
+            goal="Blend dedupe",
+            repo_path=str(tmp_path),
+            recipe_actions=recipe_actions,
+        )
+    )
+
+    # Baseline command remains unique in blend and edit fallback is added.
+    commands = [a.command for a in run.pending_actions if a.action_type == "command"]
+    assert commands.count("pytest -q") == 1
+    assert any(a.action_type == "edit" for a in run.pending_actions)

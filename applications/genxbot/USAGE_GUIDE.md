@@ -106,6 +106,47 @@ curl -X POST http://localhost:8000/api/v1/runs/<run_id>/approval \
 
 ---
 
+## 4.5 Recipe Template Integration (blended runs)
+
+GenXBot now supports full recipe-template integration in run creation.
+
+When you provide a `recipe_id`/`recipe_inputs` (or explicit `recipe_actions`), the orchestrator:
+
+- resolves and renders recipe templates,
+- parses agent-generated proposals from runtime output,
+- blends recipe + agent actions with deduplication,
+- adds fallback command/edit actions when required.
+
+Example request:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/runs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "goal": "placeholder",
+    "repo_path": "/Users/irsalimran/Desktop/GenXAI-OSS",
+    "recipe_id": "test-hardening",
+    "recipe_inputs": {
+      "target_area": "memory",
+      "priority": "high"
+    },
+    "requested_by": "recipe-user"
+  }'
+```
+
+Implementation references:
+
+- `backend/app/services/orchestrator.py` (`_parse_agent_generated_actions`, `_blend_actions`, `create_run`)
+- `backend/app/api/routes_runs.py` (`_resolve_recipe_request`, `_render_recipe_actions`)
+
+Validation tests:
+
+- `test_create_run_with_recipe_loads_executable_actions`
+- `test_create_run_blends_recipe_action_with_fallback_action_type`
+- `test_create_run_blend_actions_deduplicates_same_recipe_and_agent_command`
+
+---
+
 ## 5) Channel command examples
 
 ### Supported commands

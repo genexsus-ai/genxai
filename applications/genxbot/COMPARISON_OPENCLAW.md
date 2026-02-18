@@ -19,6 +19,7 @@
 | Install UX | ✅ Global CLI scaffold (`genxbot onboard`) | ✅ Usually one-command polished installer |
 | Daemon setup | ✅ `--install-daemon` for macOS/Linux | ✅ Usually built-in, often with richer lifecycle commands |
 | Core coding-run API | ✅ Full run lifecycle (`create/list/get/approve`) | ✅ Core requirement |
+| Recipe template integration | ✅ Accepts `recipe_id`/`recipe_inputs`, renders templates, blends recipe + agent actions with dedupe/fallback | ✅ Common in mature coding-agent products |
 | Approval/safety gates | ✅ Explicit action approvals + policy controls | ✅ Usually present |
 | Channel integrations | ✅ Slack/Telegram ingestion + command parsing | ✅ Often included |
 | Channel trust/pairing | ✅ Pairing/open policies + allowlists | ⚠️ Varies by product |
@@ -39,6 +40,8 @@
    - Admin roles, auditability, protected mutation paths.
 3. **Flexible architecture**
    - API-first backend and channel pathways give multiple integration surfaces.
+4. **Recipe-template orchestration**
+   - Precomputed recipe templates now blend with agent-generated actions, with deduplication and fallback action guarantees.
 
 ---
 

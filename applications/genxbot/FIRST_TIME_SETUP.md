@@ -161,6 +161,28 @@ Replace `<run_id>` with your real run ID.
 
 ---
 
+## 10.1 (New) Create a recipe-templated run (blended actions)
+
+GenXBot now supports full recipe-template integration. Recipe actions are blended with
+agent-generated actions (deduplicated + fallback action coverage).
+
+```bash
+curl -X POST http://localhost:8000/api/v1/runs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "goal": "placeholder",
+    "repo_path": "/Users/irsalimran/Desktop/GenXAI-OSS",
+    "recipe_id": "test-hardening",
+    "recipe_inputs": {
+      "target_area": "memory",
+      "priority": "high"
+    },
+    "requested_by": "first-user"
+  }'
+```
+
+---
+
 ## 11) Approve/reject pending actions
 
 If the run requires approval, submit a decision:
@@ -175,6 +197,29 @@ curl -X POST http://localhost:8000/api/v1/runs/<run_id>/approval \
     "actor": "first-user",
     "actor_role": "approver"
   }'
+```
+
+---
+
+## 11.1 (New) Check observability hooks
+
+GenXBot emits structured events for:
+
+- plan generation latency
+- tool/action execution attempts
+- safety policy decisions
+- retry/failure lifecycle events
+
+Quick snapshot:
+
+```bash
+curl http://localhost:8000/api/v1/runs/observability/snapshot
+```
+
+Recent events:
+
+```bash
+curl "http://localhost:8000/api/v1/runs/observability/events?limit=25"
 ```
 
 ---

@@ -6,7 +6,9 @@ import asyncio
 import hashlib
 import json
 import os
+import re
 import shutil
+import shlex
 import sys
 import time
 from datetime import datetime, timezone
@@ -322,6 +324,120 @@ class GenXBotOrchestrator:
     def _tool_map(self) -> dict[str, Tool]:
         return {tool.metadata.name: tool for tool in ToolRegistry.list_all()}
 
+    @staticmethod
+    def _extract_plan_titles(plan_text: str | None, *, max_titles: int = 6) -> list[str]:
+        if not plan_text:
+            return []
+
+        titles: list[str] = []
+        for raw in plan_text.splitlines():
+            line = raw.strip()
+            if not line:
+                continue
+
+            if line.startswith(("-", "*", "•")):
+                line = line[1:].strip()
+            else:
+                line = re.sub(r"^\d+[\)\.:\-]\s*", "", line)
+
+            if len(line) < 4:
+                continue
+
+            titles.append(line)
+            if len(titles) >= max_titles:
+                break
+        return titles
+
+    def _parse_agent_generated_actions(self, executor_output: str | None, *, workspace_path: str) -> list[ProposedAction]:
+        if not executor_output:
+            return []
+
+        actions: list[ProposedAction] = []
+        text = executor_output.strip()
+        if not text:
+            return actions
+
+        command_match = re.search(r"(?:^|\n)\s*(?:command|cmd)\s*[:\-]\s*(.+)", text, re.IGNORECASE)
+        command = command_match.group(1).strip() if command_match else ""
+        if command:
+            try:
+                argv = shlex.split(command)
+            except ValueError:
+                argv = []
+            if argv and self._policy.is_command_spec_allowed(argv):
+                actions.append(
+                    ProposedAction(
+                        action_type="command",
+                        description="Agent-generated command proposal",
+                        command=command,
+                    )
+                )
+
+        file_match = re.search(r"(?:^|\n)\s*(?:edit\s+file|file|path)\s*[:\-]\s*([^\n]+)", text, re.IGNORECASE)
+        agent_file = file_match.group(1).strip() if file_match else ""
+        if agent_file:
+            if not Path(agent_file).is_absolute():
+                agent_file = str(Path(workspace_path) / agent_file)
+            actions.append(
+                ProposedAction(
+                    action_type="edit",
+                    description="Agent-generated edit proposal",
+                    file_path=agent_file,
+                    patch=(
+                        "FULL_FILE_CONTENT:\n"
+                        "# Generated from agent executor output\n"
+                        "AGENT_EXECUTOR_OUTPUT = '''\n"
+                        f"{text[:1200]}\n"
+                        "'''\n"
+                    ),
+                )
+            )
+
+        return actions
+
+    @staticmethod
+    def _blend_actions(
+        *,
+        recipe_actions: list[ProposedAction],
+        agent_actions: list[ProposedAction],
+        fallback_actions: list[ProposedAction],
+    ) -> list[ProposedAction]:
+        blended: list[ProposedAction] = []
+        seen_keys: set[tuple[str, str]] = set()
+
+        def _action_key(action: ProposedAction) -> tuple[str, str]:
+            if action.action_type == "command":
+                return ("command", (action.command or "").strip().lower())
+            return (
+                "edit",
+                (
+                    ((action.file_path or "").strip().lower())
+                    + "::"
+                    + ((action.patch or "").strip()[:200])
+                ),
+            )
+
+        for action in [*recipe_actions, *agent_actions]:
+            key = _action_key(action)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            blended.append(action)
+
+        has_command = any(a.action_type == "command" for a in blended)
+        has_edit = any(a.action_type == "edit" for a in blended)
+
+        if not has_command:
+            fallback_command = next((a for a in fallback_actions if a.action_type == "command"), None)
+            if fallback_command:
+                blended.append(fallback_command)
+        if not has_edit:
+            fallback_edit = next((a for a in fallback_actions if a.action_type == "edit"), None)
+            if fallback_edit:
+                blended.append(fallback_edit)
+
+        return blended
+
     def _build_redis_client(self) -> Optional[Any]:
         if not self._settings.redis_enabled:
             return None
@@ -481,12 +597,16 @@ class GenXBotOrchestrator:
         run_id = f"run_{os.urandom(5).hex()}"
         workspace_path = self._prepare_workspace(run_id=run_id, repo_path=request.repo_path)
 
-        plan_steps = [
-            PlanStep(title="Ingest repository and identify project context"),
-            PlanStep(title="Generate implementation plan from goal"),
-            PlanStep(title="Propose safe code edits"),
-            PlanStep(title="Run lint/tests and summarize result"),
+        default_plan_titles = [
+            "Ingest repository and identify project context",
+            "Generate implementation plan from goal",
+            "Propose safe code edits",
+            "Run lint/tests and summarize result",
         ]
+        plan_steps = [
+            PlanStep(title=title) for title in default_plan_titles
+        ]
+
         base_actions = [
             ProposedAction(
                 action_type="command",
@@ -505,25 +625,6 @@ class GenXBotOrchestrator:
                 ),
             ),
         ]
-
-        recipe_actions: list[ProposedAction] = []
-        for template in request.recipe_actions:
-            file_path = template.file_path
-            if template.action_type == "edit":
-                if not file_path:
-                    file_path = f"{workspace_path}/TARGET_FILE.py"
-                elif not Path(file_path).is_absolute():
-                    file_path = str(Path(workspace_path) / file_path)
-
-            recipe_actions.append(
-                ProposedAction(
-                    action_type=template.action_type,
-                    description=template.description,
-                    command=template.command,
-                    file_path=file_path,
-                    patch=template.patch,
-                )
-            )
 
         run = RunSession(
             id=run_id,
@@ -587,7 +688,48 @@ class GenXBotOrchestrator:
                 )
             )
 
-        proposed_actions = recipe_actions or base_actions
+        agent_plan_titles = self._extract_plan_titles(pipeline_output.get("plan_text"))
+        if agent_plan_titles:
+            merged_titles: list[str] = []
+            seen_titles: set[str] = set()
+            for title in [*default_plan_titles, *agent_plan_titles]:
+                norm = title.strip().lower()
+                if not norm or norm in seen_titles:
+                    continue
+                seen_titles.add(norm)
+                merged_titles.append(title)
+            run.plan_steps = [PlanStep(title=title) for title in merged_titles]
+            plan_steps = run.plan_steps
+
+        recipe_actions: list[ProposedAction] = []
+        for template in request.recipe_actions:
+            file_path = template.file_path
+            if template.action_type == "edit":
+                if not file_path:
+                    file_path = f"{workspace_path}/TARGET_FILE.py"
+                elif not Path(file_path).is_absolute():
+                    file_path = str(Path(workspace_path) / file_path)
+
+            recipe_actions.append(
+                ProposedAction(
+                    action_type=template.action_type,
+                    description=template.description,
+                    command=template.command,
+                    file_path=file_path,
+                    patch=template.patch,
+                )
+            )
+
+        agent_actions = self._parse_agent_generated_actions(
+            pipeline_output.get("executor_output"),
+            workspace_path=workspace_path,
+        )
+
+        proposed_actions = self._blend_actions(
+            recipe_actions=recipe_actions,
+            agent_actions=agent_actions,
+            fallback_actions=base_actions,
+        )
         if recipe_actions:
             run.timeline.append(
                 TimelineEvent(
@@ -596,18 +738,17 @@ class GenXBotOrchestrator:
                     content=f"Loaded {len(recipe_actions)} executable actions from recipe definition.",
                 )
             )
-        if pipeline_output.get("executor_output"):
-            first_edit = next((a for a in proposed_actions if a.action_type == "edit"), None)
-            if first_edit:
-                first_edit.patch = (
-                    "FULL_FILE_CONTENT:\n"
-                    "# generated by genxbot from GenXAI executor output\n"
-                    "GENXAI_EXECUTOR_OUTPUT = '''\n"
-                    f"{pipeline_output['executor_output'][:1200]}\n"
-                    "'''\n"
+        if agent_actions:
+            run.timeline.append(
+                TimelineEvent(
+                    agent="genxai_runtime",
+                    event="agent_actions_blended",
+                    content=(
+                        f"Blended {len(agent_actions)} agent-generated actions with "
+                        f"{len(recipe_actions)} recipe actions."
+                    ),
                 )
-                if not first_edit.file_path:
-                    first_edit.file_path = f"{workspace_path}/TARGET_FILE.py"
+            )
 
         for action in proposed_actions:
             action.safe = action.action_type == "command" and bool(
@@ -681,6 +822,8 @@ class GenXBotOrchestrator:
                 "plan_step_count": len(plan_steps),
                 "pending_actions": len(proposed_actions),
                 "used_live_pipeline": bool(pipeline_output),
+                "recipe_action_count": len(recipe_actions),
+                "agent_action_count": len(agent_actions),
             },
         )
         self._add_artifact(

@@ -122,6 +122,16 @@ Detailed release/publish instructions:
 
 GenXBot now supports **Recipes** (reusable run templates) as an alternative to “skills”.
 
+It now supports full **Recipe Template Integration** in the orchestrator:
+
+- accepts precomputed recipe action templates (`recipe_actions`)
+- renders recipe templates from `recipe_id` + `recipe_inputs`
+- blends recipe actions with agent-generated proposals
+- deduplicates overlapping actions
+- guarantees minimum action coverage by adding fallback command/edit actions when needed
+
+Blend behavior is implemented in `backend/app/services/orchestrator.py` (`_parse_agent_generated_actions`, `_blend_actions`, and `create_run`) and emits timeline marker `agent_actions_blended` when agent actions are merged.
+
 You can create runs with:
 
 - `recipe_id`
@@ -140,6 +150,12 @@ Example:
   }
 }
 ```
+
+Validation coverage (backend tests):
+
+- `test_create_run_with_recipe_loads_executable_actions`
+- `test_create_run_blends_recipe_action_with_fallback_action_type`
+- `test_create_run_blend_actions_deduplicates_same_recipe_and_agent_command`
 
 ### Admin security headers (for protected endpoints when `ADMIN_API_TOKEN` is set)
 
@@ -189,6 +205,15 @@ Behavior:
 - Attributes are sanitized/truncated to reduce high-cardinality and oversized payload risks.
 - Sampling and per-key minute rate-limiting can suppress noisy event streams.
 - Snapshot endpoint includes filtered totals and latency aggregates (`latency_avg_ms`, `latency_p50_ms`, `latency_p95_ms`).
+
+Structured observability hooks emitted by orchestrator/executor include:
+
+- `plan_generation_latency` (planning latency metrics)
+- `action_execution_attempt` (tool invocations)
+- `safety_policy_decision` (approval/policy decisions)
+- `action_execution_retry` and `action_execution_failed` (retry/failure lifecycle)
+
+These are available through GenXBot observability endpoints and can be bridged to external telemetry backends (Prometheus/OpenTelemetry) via the shared metrics/tracing collectors.
 
 ### Channel maintenance mode (Phase 6E)
 

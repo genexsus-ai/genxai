@@ -24,6 +24,7 @@ GenXAI is an advanced agentic AI framework designed to surpass existing solution
 ## 🧩 Applications
 
 - **[Autonomous Coding Agent](https://github.com/genexsus-ai/genxbot/blob/main/README.md)**: GenXAI-powered autonomous coding application.
+  - Includes recipe-template run support with blended recipe + agent-generated actions (dedupe + fallback action coverage), plus structured observability hooks for planning latency, tool invocations, safety decisions, and retry/failure events.
 - **[AI Strategy Agent (P2P Brainstorming)](./applications/ai_strategy_agent/backend/README.md)**: peer-to-peer brainstorming workflow with layered architecture and local observability hooks.
 - **[Travel Planning Agent](./applications/travel_planning_agent/README.md)**: GenXAI-powered travel planning app with FastAPI backend, React frontend, and streaming itinerary updates.
 
