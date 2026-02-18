@@ -138,6 +138,40 @@ class ChannelMetricsSnapshot(BaseModel):
     per_channel_outbound_success: dict[str, int] = Field(default_factory=dict)
 
 
+class ObservabilityEvent(BaseModel):
+    schema_version: int = 1
+    id: str = Field(default_factory=lambda: f"obs_{uuid4().hex[:10]}")
+    timestamp: str = Field(default_factory=utc_now_iso)
+    category: Literal["planning", "tool", "safety", "retry", "failure", "channel"]
+    event: str
+    status: Literal["success", "error", "info"] = "info"
+    run_id: Optional[str] = None
+    trace_id: Optional[str] = None
+    correlation_id: Optional[str] = None
+    source: Literal["orchestrator", "executor", "api", "channel", "system"] = "system"
+    latency_ms: Optional[float] = None
+    attributes: dict = Field(default_factory=dict)
+
+
+class ObservabilitySnapshot(BaseModel):
+    total_events: int = 0
+    filtered_events: int = 0
+    by_category: dict[str, int] = Field(default_factory=dict)
+    by_event: dict[str, int] = Field(default_factory=dict)
+    by_status: dict[str, int] = Field(default_factory=dict)
+    latency_avg_ms: Optional[float] = None
+    latency_p50_ms: Optional[float] = None
+    latency_p95_ms: Optional[float] = None
+    window_start: Optional[str] = None
+    window_end: Optional[str] = None
+
+
+class ObservabilityEventsPage(BaseModel):
+    items: list[ObservabilityEvent] = Field(default_factory=list)
+    total_filtered: int = 0
+    next_cursor: Optional[str] = None
+
+
 class OutboundRetryJob(BaseModel):
     id: str
     channel: Literal["slack", "telegram"]

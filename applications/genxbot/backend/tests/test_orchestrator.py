@@ -400,6 +400,150 @@ def test_metrics_endpoint_returns_evaluation_payload(tmp_path: Path) -> None:
         runs_routes._orchestrator = original_orchestrator
 
 
+def test_observability_endpoints_capture_plan_latency_event(tmp_path: Path) -> None:
+    orchestrator = build_orchestrator()
+
+    original_orchestrator = runs_routes._orchestrator
+    runs_routes._orchestrator = orchestrator
+    runs_routes._observability_events.clear()
+    try:
+        client = TestClient(create_app())
+        created = client.post(
+            "/api/v1/runs",
+            json={
+                "goal": "Observe planning latency",
+                "repo_path": str(tmp_path),
+            },
+        )
+        assert created.status_code == 200
+
+        snapshot = client.get("/api/v1/runs/observability/snapshot")
+        assert snapshot.status_code == 200
+        assert snapshot.json()["total_events"] >= 1
+
+        planning_events = client.get("/api/v1/runs/observability/events?category=planning")
+        assert planning_events.status_code == 200
+        events = planning_events.json()
+        assert any(evt["event"] == "plan_generation_latency" for evt in events)
+    finally:
+        runs_routes._orchestrator = original_orchestrator
+
+
+def test_observability_events_include_safety_and_execution_failure(tmp_path: Path) -> None:
+    orchestrator = build_orchestrator()
+
+    original_orchestrator = runs_routes._orchestrator
+    runs_routes._orchestrator = orchestrator
+    runs_routes._observability_events.clear()
+    try:
+        client = TestClient(create_app())
+        created = client.post(
+            "/api/v1/runs",
+            json={
+                "goal": "Observe safety + execution events",
+                "repo_path": str(tmp_path),
+            },
+        )
+        assert created.status_code == 200
+        run = created.json()
+        run_id = run["id"]
+
+        command_action = next(a for a in run["pending_actions"] if a["action_type"] == "command")
+
+        # Force blocked command path to generate failure/retry-family observability events.
+        live_run = orchestrator.get_run(run_id)
+        assert live_run is not None
+        target = next(a for a in live_run.pending_actions if a.id == command_action["id"])
+        target.command = "pytest -q && echo blocked"
+        orchestrator._set_approval_checkpoint(live_run, reason="approval_required")
+        orchestrator._store.update(live_run)
+
+        approval = client.post(
+            f"/api/v1/runs/{run_id}/approval",
+            json={
+                "action_id": command_action["id"],
+                "approve": True,
+                "actor": "tester",
+                "actor_role": "approver",
+            },
+        )
+        assert approval.status_code == 200
+
+        run_events = client.get(f"/api/v1/runs/observability/events?run_id={run_id}&limit=500")
+        assert run_events.status_code == 200
+        payload = run_events.json()
+
+        assert any(evt["event"] == "safety_policy_decision" for evt in payload)
+        assert any(evt["event"] == "action_execution_attempt" for evt in payload)
+        assert any(evt["event"] in {"action_execution_failed", "action_execution_failure"} for evt in payload)
+    finally:
+        runs_routes._orchestrator = original_orchestrator
+
+
+def test_observability_events_page_and_filtered_snapshot(tmp_path: Path) -> None:
+    orchestrator = build_orchestrator()
+
+    original_orchestrator = runs_routes._orchestrator
+    runs_routes._orchestrator = orchestrator
+    runs_routes._observability_events.clear()
+    try:
+        client = TestClient(create_app())
+        created = client.post(
+            "/api/v1/runs",
+            json={
+                "goal": "Observe paged events",
+                "repo_path": str(tmp_path),
+            },
+        )
+        assert created.status_code == 200
+
+        page_one = client.get("/api/v1/runs/observability/events/page?limit=1")
+        assert page_one.status_code == 200
+        payload = page_one.json()
+        assert payload["total_filtered"] >= 1
+        assert len(payload["items"]) == 1
+
+        snapshot = client.get("/api/v1/runs/observability/snapshot?category=planning")
+        assert snapshot.status_code == 200
+        snap = snapshot.json()
+        assert snap["total_events"] >= snap["filtered_events"]
+        assert "latency_p50_ms" in snap
+        assert "latency_p95_ms" in snap
+    finally:
+        runs_routes._orchestrator = original_orchestrator
+
+
+def test_observability_event_schema_fields_exposed(tmp_path: Path) -> None:
+    orchestrator = build_orchestrator()
+
+    original_orchestrator = runs_routes._orchestrator
+    runs_routes._orchestrator = orchestrator
+    runs_routes._observability_events.clear()
+    try:
+        client = TestClient(create_app())
+        created = client.post(
+            "/api/v1/runs",
+            json={
+                "goal": "Observe schema fields",
+                "repo_path": str(tmp_path),
+            },
+        )
+        assert created.status_code == 200
+
+        planning_events = client.get(
+            "/api/v1/runs/observability/events?category=planning&source=orchestrator"
+        )
+        assert planning_events.status_code == 200
+        events = planning_events.json()
+        assert events
+        first = events[0]
+        assert first["schema_version"] == 1
+        assert first["source"] == "orchestrator"
+        assert "correlation_id" in first
+    finally:
+        runs_routes._orchestrator = original_orchestrator
+
+
 def test_rerun_failed_step_creates_new_pending_action(tmp_path: Path) -> None:
     orchestrator = build_orchestrator()
     run = orchestrator.create_run(

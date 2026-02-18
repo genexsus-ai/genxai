@@ -72,6 +72,13 @@ class Settings(BaseSettings):
     channel_idempotency_cache_ttl_seconds: int = 900
     channel_idempotency_cache_max_entries: int = 1000
     admin_audit_max_entries: int = 5000
+    observability_event_max_entries: int = 5000
+    observability_default_sample_rate: float = 1.0
+    observability_rate_limit_per_key_per_minute: int = 240
+    observability_max_attributes: int = 25
+    observability_attribute_key_max_length: int = 64
+    observability_attribute_value_max_length: int = 256
+    observability_sample_overrides: str = ""
     admin_api_token: str = ""
 
 

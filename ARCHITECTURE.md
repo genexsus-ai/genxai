@@ -1,7 +1,7 @@
 # GenXAI Framework - Architecture Documentation
 
-**Version:** 1.0.0  
-**Last Updated:** February 3, 2026  
+**Version:** 1.1.0  
+**Last Updated:** February 18, 2026  
 **Status:** Active Development
 
 ---
@@ -258,6 +258,26 @@ Multi-layered memory architecture inspired by human cognition.
 - Move important memories to long-term
 - Forget low-importance memories
 - Extract patterns and insights
+
+**Backend Plugins (Implemented):**
+- Formal plugin contract and registry (`MemoryBackendPlugin`, `MemoryBackendRegistry`)
+- Built-in backend plugins:
+  - Redis
+  - SQLite
+  - Neo4j
+- Runtime attachment via `MemorySystem` based on configured clients/backends
+
+**Memory Telemetry (Implemented):**
+- Unified telemetry access through `MemorySystem.get_stats()`
+- System-level plugin metrics in `backend_plugins`
+- Per-memory backend telemetry in:
+  - `long_term.backend_telemetry`
+  - `episodic.backend_telemetry`
+  - `semantic.backend_telemetry`
+- Metric coverage includes:
+  - Redis memory size/max/utilization and key counts
+  - SQLite file/database size and table statistics
+  - Neo4j graph size (nodes/edges), out-degree, traversal metrics
 
 ### 4. Tool System
 

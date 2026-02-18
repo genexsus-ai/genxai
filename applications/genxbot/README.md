@@ -101,6 +101,9 @@ Detailed release/publish instructions:
 - Channel command UX (message text): `/run`, `/status`, `/approve`, `/reject`
 - `GET /api/v1/runs/channels/sessions` inspect channel session → run mappings
 - `GET /api/v1/runs/channels/metrics` channel observability counters
+- `GET /api/v1/runs/observability/events` list structured observability events (filters: `category,event,run_id,status,source,start_time,end_time`)
+- `GET /api/v1/runs/observability/events/page` paged observability events (`limit,cursor` + same filters)
+- `GET /api/v1/runs/observability/snapshot` aggregate observability snapshot (supports same filters + latency p50/p95)
 - `GET /api/v1/runs/channels/{channel}/maintenance` get channel maintenance mode
 - `PUT /api/v1/runs/channels/{channel}/maintenance` update maintenance mode (admin protected)
 - `GET /api/v1/runs/channels/outbound-retry` outbound retry/dead-letter snapshot
@@ -167,6 +170,25 @@ Behavior:
 - Admin audit log is now bounded (oldest entries are evicted automatically).
 - Use `/channels/admin-audit/stats` to monitor current size and cap.
 - Use `/channels/admin-audit/clear` for controlled admin resets.
+
+### Observability hardening controls
+
+Config keys:
+
+- `OBSERVABILITY_EVENT_MAX_ENTRIES` (default `5000`)
+- `OBSERVABILITY_DEFAULT_SAMPLE_RATE` (default `1.0`)
+- `OBSERVABILITY_RATE_LIMIT_PER_KEY_PER_MINUTE` (default `240`)
+- `OBSERVABILITY_MAX_ATTRIBUTES` (default `25`)
+- `OBSERVABILITY_ATTRIBUTE_KEY_MAX_LENGTH` (default `64`)
+- `OBSERVABILITY_ATTRIBUTE_VALUE_MAX_LENGTH` (default `256`)
+- `OBSERVABILITY_SAMPLE_OVERRIDES` (CSV `key:rate`, e.g. `planning:1.0,tool.action_execution_attempt:0.2`)
+
+Behavior:
+
+- Events now include `schema_version`, `source`, and `correlation_id`.
+- Attributes are sanitized/truncated to reduce high-cardinality and oversized payload risks.
+- Sampling and per-key minute rate-limiting can suppress noisy event streams.
+- Snapshot endpoint includes filtered totals and latency aggregates (`latency_avg_ms`, `latency_p50_ms`, `latency_p95_ms`).
 
 ### Channel maintenance mode (Phase 6E)
 

@@ -8,6 +8,7 @@ import json
 import os
 import shutil
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -34,6 +35,7 @@ from app.schemas import (
 )
 from app.services.evaluation import compute_evaluation_metrics
 from app.services.execution import ActionExecutionError, ActionExecutor
+from app.services.observability_events import ObservabilityEventService
 from app.services.policy import SafetyPolicy
 from app.services.store import RunStore
 
@@ -60,17 +62,72 @@ def _now() -> str:
 class GenXBotOrchestrator:
     """Orchestrates planning, approval, and execution timeline for runs."""
 
-    def __init__(self, store: RunStore, policy: SafetyPolicy) -> None:
+    def __init__(
+        self,
+        store: RunStore,
+        policy: SafetyPolicy,
+        observability_events: ObservabilityEventService | None = None,
+    ) -> None:
         self._store = store
         self._policy = policy
+        self._observability_events = observability_events
         self._settings = get_settings()
         self._executor = ActionExecutor(
             policy=policy,
             retry_attempts=self._settings.action_retry_attempts,
             retry_backoff_seconds=self._settings.action_retry_backoff_seconds,
+            event_callback=self._on_executor_event,
         )
         self._genxai_runtime_ctx: dict[str, dict[str, Any]] = {}
         self._lifecycle_hooks: list[Callable[[dict[str, Any]], None]] = []
+
+    def _emit_observability(
+        self,
+        *,
+        category: str,
+        event: str,
+        status: str = "info",
+        run_id: str | None = None,
+        trace_id: str | None = None,
+        source: str = "orchestrator",
+        latency_ms: float | None = None,
+        attributes: dict[str, Any] | None = None,
+    ) -> None:
+        if not self._observability_events:
+            return
+        try:
+            self._observability_events.emit(
+                category=category,
+                event=event,
+                status=status,
+                run_id=run_id,
+                trace_id=trace_id,
+                correlation_id=trace_id or run_id,
+                source=source,
+                latency_ms=latency_ms,
+                attributes=attributes,
+            )
+        except Exception:
+            return
+
+    def _on_executor_event(self, event: str, payload: dict[str, Any]) -> None:
+        category = "tool"
+        status = "info"
+        if event == "action_execution_retry":
+            category = "retry"
+        elif event == "action_execution_failed":
+            category = "failure"
+            status = "error"
+        elif event == "action_execution_attempt":
+            category = "tool"
+        self._emit_observability(
+            category=category,
+            event=event,
+            status=status,
+            run_id=payload.get("run_id"),
+            source="executor",
+            attributes=payload,
+        )
 
     def register_lifecycle_hook(self, callback: Callable[[dict[str, Any]], None]) -> None:
         """Register a callback for standardized orchestration lifecycle events."""
@@ -87,9 +144,6 @@ class GenXBotOrchestrator:
         run: RunSession,
         payload: dict[str, Any] | None = None,
     ) -> None:
-        if not self._lifecycle_hooks:
-            return
-
         envelope = {
             "event": event,
             "run_id": run.id,
@@ -97,12 +151,36 @@ class GenXBotOrchestrator:
             "timestamp": _now(),
             "payload": payload or {},
         }
-        for hook in list(self._lifecycle_hooks):
-            try:
-                hook(envelope)
-            except Exception:
-                # Hooks are optional side-effect adapters and must never break orchestration.
-                continue
+        if self._lifecycle_hooks:
+            for hook in list(self._lifecycle_hooks):
+                try:
+                    hook(envelope)
+                except Exception:
+                    # Hooks are optional side-effect adapters and must never break orchestration.
+                    continue
+
+        lifecycle_to_category = {
+            "plan_created": "planning",
+            "action_proposed": "tool",
+            "approval_required": "safety",
+            "approval_resumed": "safety",
+            "action_approved": "safety",
+            "action_rejected": "safety",
+            "action_executed": "tool",
+            "run_failed": "failure",
+            "run_completed": "planning",
+            "artifact_produced": "tool",
+        }
+        category = lifecycle_to_category.get(event)
+        if category:
+            status = "error" if event == "run_failed" else "info"
+            self._emit_observability(
+                category=category,
+                event=event,
+                status=status,
+                run_id=run.id,
+                attributes=payload or {},
+            )
 
     def _add_artifact(self, run: RunSession, artifact: Artifact) -> None:
         run.artifacts.append(artifact)
@@ -399,6 +477,7 @@ class GenXBotOrchestrator:
         }
 
     def create_run(self, request: RunTaskRequest) -> RunSession:
+        plan_start = time.perf_counter()
         run_id = f"run_{os.urandom(5).hex()}"
         workspace_path = self._prepare_workspace(run_id=run_id, repo_path=request.repo_path)
 
@@ -591,6 +670,18 @@ class GenXBotOrchestrator:
             actor_role="executor",
             action="run_created",
             detail=f"Run created for goal: {request.goal}",
+        )
+        self._emit_observability(
+            category="planning",
+            event="plan_generation_latency",
+            status="success",
+            run_id=run.id,
+            latency_ms=(time.perf_counter() - plan_start) * 1000.0,
+            attributes={
+                "plan_step_count": len(plan_steps),
+                "pending_actions": len(proposed_actions),
+                "used_live_pipeline": bool(pipeline_output),
+            },
         )
         self._add_artifact(
             run,
@@ -898,6 +989,19 @@ class GenXBotOrchestrator:
                 self._set_approval_checkpoint(run, reason="approval_required")
             valid_resume, reason = self._validate_approval_resume(run, approval.action_id)
             if not valid_resume:
+                self._emit_observability(
+                    category="safety",
+                    event="safety_policy_decision",
+                    status="error",
+                    run_id=run.id,
+                    attributes={
+                        "decision": "blocked",
+                        "reason": reason,
+                        "action_id": approval.action_id,
+                        "actor": approval.actor,
+                        "actor_role": approval.actor_role,
+                    },
+                )
                 run.timeline.append(
                     TimelineEvent(
                         agent="system",
@@ -931,6 +1035,19 @@ class GenXBotOrchestrator:
             )
 
         if not self._policy.can_approve(approval.actor_role):
+            self._emit_observability(
+                category="safety",
+                event="safety_policy_decision",
+                status="error",
+                run_id=run.id,
+                attributes={
+                    "decision": "denied",
+                    "reason": "insufficient_role",
+                    "action_id": approval.action_id,
+                    "actor": approval.actor,
+                    "actor_role": approval.actor_role,
+                },
+            )
             run.timeline.append(
                 TimelineEvent(
                     agent="system",
@@ -953,6 +1070,19 @@ class GenXBotOrchestrator:
             return run
 
         chosen.status = "approved" if approval.approve else "rejected"
+        self._emit_observability(
+            category="safety",
+            event="safety_policy_decision",
+            status="success" if approval.approve else "info",
+            run_id=run.id,
+            attributes={
+                "decision": "approved" if approval.approve else "rejected",
+                "action_id": chosen.id,
+                "action_type": chosen.action_type,
+                "actor": approval.actor,
+                "actor_role": approval.actor_role,
+            },
+        )
         self._emit_lifecycle_event(
             event="action_approved" if approval.approve else "action_rejected",
             run=run,
@@ -986,6 +1116,7 @@ class GenXBotOrchestrator:
                 artifact_kind, artifact_content, artifact_payload = self._executor.execute(
                     chosen,
                     workspace_root=run.sandbox_path or run.repo_path,
+                    run_id=run.id,
                 )
                 chosen.status = "executed"
                 run.timeline.append(
@@ -1014,6 +1145,17 @@ class GenXBotOrchestrator:
                     ),
                 )
             except ActionExecutionError as exc:
+                self._emit_observability(
+                    category="failure",
+                    event="action_execution_failure",
+                    status="error",
+                    run_id=run.id,
+                    attributes={
+                        "action_id": chosen.id,
+                        "action_type": chosen.action_type,
+                        "error": str(exc),
+                    },
+                )
                 chosen.status = "rejected"
                 run.status = "failed"
                 run.timeline.append(

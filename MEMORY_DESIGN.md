@@ -1,8 +1,8 @@
 # GenXAI Framework - Memory System Design
 
-**Version:** 1.0.0  
-**Last Updated:** February 3, 2026  
-**Status:** Active Development
+**Version:** 1.1.0  
+**Last Updated:** February 18, 2026  
+**Status:** Active Development (Core memory backends + telemetry implemented)
 
 ---
 
@@ -110,9 +110,55 @@ memory = MemorySystem(
 
 ### Storage Backends
 
-- **Local FS** (default): `.genxai/memory/`
-- **Vector DB**: planned via adapters (Pinecone, Weaviate, Chroma)
-- **Graph DB**: planned for semantic/episodic relationships
+- **Local FS / JSON** (default): `.genxai/memory/`
+- **SQLite persistence**: supported via `persistence_backend="sqlite"`
+- **Redis backend plugin**: supported for long-term memory telemetry-backed storage
+- **Neo4j backend plugin**: supported for graph-backed episodic/semantic memory
+- **Vector DB**: supported via adapters (Pinecone, Weaviate, Chroma)
+
+### Formal Backend Plugin Registry
+
+GenXAI memory now includes a formal plugin registry in `genxai/core/memory/backends.py`:
+
+- `MemoryBackendPlugin` (base contract)
+- `MemoryBackendRegistry` (register/create/list backends)
+- Built-in plugins:
+  - `redis`
+  - `sqlite`
+  - `neo4j`
+
+Plugins are automatically attached by `MemorySystem` when matching clients/config are provided.
+
+### Memory Telemetry and Utilization Metrics
+
+`MemorySystem.get_stats()` now includes backend telemetry under:
+
+- `backend_plugins` (system-level backend stats)
+- `long_term.backend_telemetry`
+- `episodic.backend_telemetry`
+- `semantic.backend_telemetry`
+
+Implemented metric coverage:
+
+- **Redis plugin**
+  - `memory_size_bytes`
+  - `memory_max_bytes`
+  - `utilization`
+  - `key_count`
+
+- **SQLite plugin**
+  - `file_size_bytes`
+  - `db_size_bytes`
+  - `table_count`
+  - `table_rows`
+
+- **Neo4j plugin**
+  - `graph_size.node_count`
+  - `graph_size.edge_count`
+  - `avg_out_degree`
+  - `traversal.path_count`
+  - `traversal.reachable_nodes`
+  - `traversal_depth`
 
 ---
 
@@ -155,8 +201,8 @@ memory = MemorySystem(
 
 ## Known Limitations
 
-- Long-term storage adapters are still evolving.
-- Semantic and procedural persistence is limited to configured backends.
+- Some metrics depend on backend capabilities/permissions and may return partial stats.
+- Semantic and procedural persistence remain limited to configured backends.
 - Large shared memory payloads can slow down agent prompts.
 
 ---
@@ -164,9 +210,8 @@ memory = MemorySystem(
 ## Roadmap
 
 - Vector-backed long-term memory adapters
-- Episodic/semantic graph store integration
 - Memory consolidation utilities
-- Memory usage metrics and dashboards
+- Expanded memory dashboards and historical telemetry aggregation
 
 ---
 

@@ -7,7 +7,7 @@ import shlex
 import subprocess
 import time
 from pathlib import Path
-from typing import List, Tuple
+from typing import Any, Callable, List, Tuple
 
 from app.schemas import CommandOutputArtifactPayload, DiffArtifactPayload, ProposedAction
 from app.services.policy import SafetyPolicy
@@ -24,22 +24,48 @@ class ActionExecutionError(Exception):
 class ActionExecutor:
     """Execute approved actions with guardrails."""
 
-    def __init__(self, policy: SafetyPolicy, retry_attempts: int = 2, retry_backoff_seconds: float = 0.2) -> None:
+    def __init__(
+        self,
+        policy: SafetyPolicy,
+        retry_attempts: int = 2,
+        retry_backoff_seconds: float = 0.2,
+        event_callback: Callable[[str, dict[str, Any]], None] | None = None,
+    ) -> None:
         self._policy = policy
         self._retry_attempts = max(retry_attempts, 1)
         self._retry_backoff_seconds = max(retry_backoff_seconds, 0.0)
+        self._event_callback = event_callback
+
+    def _emit(self, event: str, payload: dict[str, Any]) -> None:
+        if not self._event_callback:
+            return
+        try:
+            self._event_callback(event, payload)
+        except Exception:
+            return
 
     def execute(
         self,
         action: ProposedAction,
         workspace_root: str,
+        run_id: str | None = None,
     ) -> Tuple[str, str, CommandOutputArtifactPayload | DiffArtifactPayload]:
         """Execute approved action and return artifact kind + content + typed payload."""
         if action.action_type == "command":
-            output, payload = self._execute_with_retry(self._execute_command, action, workspace_root)
+            output, payload = self._execute_with_retry(
+                self._execute_command,
+                action,
+                workspace_root,
+                run_id=run_id,
+            )
             return "command_output", output, payload
         if action.action_type == "edit":
-            output, payload = self._execute_with_retry(self._execute_edit, action, workspace_root)
+            output, payload = self._execute_with_retry(
+                self._execute_edit,
+                action,
+                workspace_root,
+                run_id=run_id,
+            )
             return "diff", output, payload
         raise ActionExecutionError(f"Unsupported action type: {action.action_type}")
 
@@ -48,15 +74,49 @@ class ActionExecutor:
         fn,
         action: ProposedAction,
         workspace_root: str,
+        run_id: str | None = None,
     ) -> tuple[str, CommandOutputArtifactPayload | DiffArtifactPayload]:
         last_exc: ActionExecutionError | None = None
         for attempt in range(1, self._retry_attempts + 1):
             try:
+                self._emit(
+                    "action_execution_attempt",
+                    {
+                        "run_id": run_id,
+                        "action_id": action.id,
+                        "action_type": action.action_type,
+                        "attempt": attempt,
+                        "max_attempts": self._retry_attempts,
+                    },
+                )
                 return fn(action, workspace_root)
             except ActionExecutionError as exc:
                 last_exc = exc
                 if not exc.retryable or attempt >= self._retry_attempts:
+                    self._emit(
+                        "action_execution_failed",
+                        {
+                            "run_id": run_id,
+                            "action_id": action.id,
+                            "action_type": action.action_type,
+                            "attempt": attempt,
+                            "retryable": exc.retryable,
+                            "error": str(exc),
+                        },
+                    )
                     raise
+                self._emit(
+                    "action_execution_retry",
+                    {
+                        "run_id": run_id,
+                        "action_id": action.id,
+                        "action_type": action.action_type,
+                        "attempt": attempt,
+                        "next_attempt": attempt + 1,
+                        "backoff_seconds": self._retry_backoff_seconds,
+                        "error": str(exc),
+                    },
+                )
                 time.sleep(self._retry_backoff_seconds)
         if last_exc:
             raise last_exc

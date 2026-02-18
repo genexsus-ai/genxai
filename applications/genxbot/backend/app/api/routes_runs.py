@@ -22,6 +22,9 @@ from app.schemas import (
     ChannelTrustPolicy,
     OutboundRetryQueueSnapshot,
     OutboundRetryJob,
+    ObservabilityEvent,
+    ObservabilityEventsPage,
+    ObservabilitySnapshot,
     QueueHealthSnapshot,
     IdempotencyCacheSnapshot,
     AdminAuditSnapshot,
@@ -63,6 +66,7 @@ from app.services.authz import AdminAuditService, AdminAuthorizationService
 from app.services.store import RunStore
 from app.services.webhook_security import WebhookSecurityService
 from app.services.outbound_retry_queue import OutboundRetryQueueService
+from app.services.observability_events import ObservabilityEventService
 
 _settings = get_settings()
 _store = (
@@ -71,7 +75,30 @@ _store = (
     else RunStore()
 )
 _policy = SafetyPolicy()
-_orchestrator = GenXBotOrchestrator(store=_store, policy=_policy)
+_observability_sample_overrides: dict[str, float] = {}
+for _item in [part.strip() for part in _settings.observability_sample_overrides.split(",") if part.strip()]:
+    if ":" not in _item:
+        continue
+    _key, _value = _item.split(":", 1)
+    try:
+        _observability_sample_overrides[_key.strip()] = float(_value.strip())
+    except ValueError:
+        continue
+
+_observability_events = ObservabilityEventService(
+    max_entries=_settings.observability_event_max_entries,
+    default_sample_rate=_settings.observability_default_sample_rate,
+    per_key_rate_limit_per_minute=_settings.observability_rate_limit_per_key_per_minute,
+    max_attributes=_settings.observability_max_attributes,
+    attribute_key_max_length=_settings.observability_attribute_key_max_length,
+    attribute_value_max_length=_settings.observability_attribute_value_max_length,
+    sample_overrides=_observability_sample_overrides,
+)
+_orchestrator = GenXBotOrchestrator(
+    store=_store,
+    policy=_policy,
+    observability_events=_observability_events,
+)
 _run_queue = RunQueueService(
     orchestrator=_orchestrator,
     worker_enabled=_settings.queue_worker_enabled,
@@ -720,6 +747,75 @@ def list_channel_sessions() -> list[ChannelSessionSnapshot]:
 @router.get("/channels/metrics", response_model=ChannelMetricsSnapshot)
 def get_channel_metrics() -> ChannelMetricsSnapshot:
     return _channel_observability.snapshot()
+
+
+@router.get("/observability/events", response_model=list[ObservabilityEvent])
+def list_observability_events(
+    limit: int = 100,
+    category: str | None = None,
+    event: str | None = None,
+    run_id: str | None = None,
+    status: str | None = None,
+    source: str | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
+) -> list[ObservabilityEvent]:
+    return _observability_events.list_events(
+        limit=limit,
+        category=category,
+        event=event,
+        run_id=run_id,
+        status=status,
+        source=source,
+        start_time=start_time,
+        end_time=end_time,
+    )
+
+
+@router.get("/observability/events/page", response_model=ObservabilityEventsPage)
+def page_observability_events(
+    limit: int = 100,
+    cursor: str | None = None,
+    category: str | None = None,
+    event: str | None = None,
+    run_id: str | None = None,
+    status: str | None = None,
+    source: str | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
+) -> ObservabilityEventsPage:
+    return _observability_events.page_events(
+        limit=limit,
+        cursor=cursor,
+        category=category,
+        event=event,
+        run_id=run_id,
+        status=status,
+        source=source,
+        start_time=start_time,
+        end_time=end_time,
+    )
+
+
+@router.get("/observability/snapshot", response_model=ObservabilitySnapshot)
+def get_observability_snapshot(
+    category: str | None = None,
+    event: str | None = None,
+    run_id: str | None = None,
+    status: str | None = None,
+    source: str | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
+) -> ObservabilitySnapshot:
+    return _observability_events.snapshot(
+        category=category,
+        event=event,
+        run_id=run_id,
+        status=status,
+        source=source,
+        start_time=start_time,
+        end_time=end_time,
+    )
 
 
 @router.get("/channels/{channel}/maintenance", response_model=ChannelMaintenanceMode)

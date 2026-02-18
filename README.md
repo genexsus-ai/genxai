@@ -69,6 +69,13 @@ GenXAI is an advanced agentic AI framework designed to surpass existing solution
 - **Semantic**: Factual knowledge base
 - **Procedural**: Learned skills and procedures
 - **Working**: Active processing space
+- **Backend Plugins (Implemented)**: Redis, SQLite, Neo4j via formal plugin registry
+- **Telemetry (Implemented)**: Backend memory utilization, size, and graph traversal metrics via `MemorySystem.get_stats()`
+
+```python
+stats = await memory.get_stats()
+print(stats["backend_plugins"].keys())  # e.g. redis/sqlite/neo4j (when configured)
+```
 
 ### 🎨 No-Code Studio
 The Studio UI and enterprise backend are now staged under:
