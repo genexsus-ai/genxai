@@ -67,6 +67,7 @@ Complete guide to GenXAI framework documentation.
 | Document | Description |
 |----------|-------------|
 | [WORKER_QUEUE_ENGINE (OSS Runtime)](./WORKER_QUEUE_ENGINE.md) | Worker queue and task distribution |
+| [HARD_ISOLATION_GUIDE (OSS Runtime)](./HARD_ISOLATION_GUIDE.md) | Process/container isolation strategy for agents |
 | [BENCHMARKING](./BENCHMARKING.md) | Performance benchmarking guide |
 | [GRAPH_VISUALIZATION](./GRAPH_VISUALIZATION.md) | Workflow graph visualization |
 
