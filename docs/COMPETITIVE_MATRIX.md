@@ -2,7 +2,7 @@
 
 This document compares **GenXAI (core framework, excluding Studio UI)** against
 popular agentic frameworks and workflow engines: **CrewAI**, **AutoGen**, **BeeAI**,
-and **n8n**.
+**AutoGPT**, **LangChain**, **LlamaIndex**, and **n8n**.
 
 > Scope note: Studio‑specific GUI features are intentionally excluded from this comparison.
 
@@ -12,10 +12,10 @@ and **n8n**.
 
 GenXAI’s **core runtime** is feature‑complete for agent workflows, tool orchestration,
 multi‑provider LLM support, and **workflow triggers/connectors**. It competes well with
-**CrewAI** and **AutoGen** in orchestration depth and tooling, but still trails **n8n**
-on breadth of plug‑and‑play integrations and GUI‑first automation UX. Compared to
-**BeeAI**, GenXAI offers stronger multi‑provider support, graph orchestration, and
-enterprise‑grade observability/security.
+**CrewAI**, **AutoGen**, **LangChain**, and **LlamaIndex** on developer‑centric orchestration,
+but still trails **n8n** on breadth of plug‑and‑play integrations and GUI‑first automation UX.
+Compared to **BeeAI** and **AutoGPT**, GenXAI offers stronger graph orchestration,
+enterprise‑grade observability/security, and broader built‑in runtime controls.
 
 Key gaps to reach parity across the board:
 
@@ -29,24 +29,24 @@ Key gaps to reach parity across the board:
 
 Legend: ✅ = available, ⚠️ = partial, ❌ = missing, 🟡 = external/experimental
 
-| Capability | GenXAI (Core) | CrewAI | AutoGen | BeeAI | n8n |
-|---|---|---|---|---|---|
-| Multi‑agent orchestration | ✅ | ✅ | ✅ | ✅ | ⚠️ (workflow‑centric) |
-| Graph/Workflow engine | ✅ (parallel/conditional) | ⚠️ | ⚠️ | ⚠️ | ✅ |
-| Multi‑LLM providers | ✅ (OpenAI/Anthropic/Gemini/Cohere/Ollama) | ⚠️ | ✅ | ⚠️ | ✅ |
-| Tool registry & schemas | ✅ | ✅ | ✅ | ⚠️ | ✅ |
-| Tool templates | ✅ | ⚠️ | ❌ | ⚠️ | ✅ |
-| Memory systems | ✅ (short/long/episodic/semantic) | ⚠️ | ✅ | ⚠️ | ⚠️ |
-| Vector store abstraction | ✅ (Chroma/Pinecone) | ⚠️ | ✅ | ⚠️ | 🟡 |
-| Persistence (JSON/SQLite) | ✅ | ❌ | ⚠️ | ⚠️ | ✅ |
-| Observability hooks | ✅ (metrics/tracing/logging) | ⚠️ | ⚠️ | ⚠️ | ✅ |
-| Rate limiting & cost controls | ✅ | ⚠️ | ⚠️ | ⚠️ | ✅ |
-| Security/RBAC | ✅ | ⚠️ | ⚠️ | ⚠️ | ✅ |
-| Offline/local inference | ✅ (Ollama) | ⚠️ | ✅ | ✅ | ✅ |
-| CLI workflows | ✅ | ✅ | ✅ | ⚠️ | ✅ |
-| Workflow triggers/connectors | ✅ (core) | ⚠️ | ⚠️ | ⚠️ | ✅ |
-| GUI workflow builder | ❌ (core) | ❌ | ❌ | ❌ | ✅ |
-| Marketplace/ecosystem | ⚠️ (templates) | ✅ | ✅ | ⚠️ | ✅ |
+| Capability | GenXAI (Core) | CrewAI | AutoGen | AutoGPT | LangChain | LlamaIndex | BeeAI | n8n |
+|---|---|---|---|---|---|---|---|---|
+| Multi‑agent orchestration | ✅ | ✅ | ✅ | ⚠️ | ✅ | ⚠️ | ✅ | ⚠️ (workflow‑centric) |
+| Graph/Workflow engine | ✅ (parallel/conditional) | ⚠️ | ⚠️ | ⚠️ | ✅ (LangGraph) | ⚠️ | ⚠️ | ✅ |
+| Multi‑LLM providers | ✅ (OpenAI/Anthropic/Gemini/Cohere/Ollama) | ⚠️ | ✅ | ⚠️ | ✅ | ✅ | ⚠️ | ✅ |
+| Tool registry & schemas | ✅ | ✅ | ✅ | ⚠️ | ✅ | ✅ | ⚠️ | ✅ |
+| Tool templates | ✅ | ⚠️ | ❌ | ⚠️ | ✅ | ⚠️ | ⚠️ | ✅ |
+| Memory systems | ✅ (short/long/episodic/semantic) | ⚠️ | ✅ | ⚠️ | ⚠️ | ✅ (RAG‑oriented) | ⚠️ | ⚠️ |
+| Vector store abstraction | ✅ (Chroma/Pinecone) | ⚠️ | ✅ | ⚠️ | ✅ | ✅ | ⚠️ | 🟡 |
+| Persistence (JSON/SQLite) | ✅ | ❌ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ✅ |
+| Observability hooks | ✅ (metrics/tracing/logging) | ⚠️ | ⚠️ | ⚠️ | ✅ (LangSmith ecosystem) | ⚠️ | ⚠️ | ✅ |
+| Rate limiting & cost controls | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ✅ |
+| Security/RBAC | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ✅ |
+| Offline/local inference | ✅ (Ollama) | ⚠️ | ✅ | ⚠️ | ✅ | ✅ | ✅ | ✅ |
+| CLI workflows | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ✅ |
+| Workflow triggers/connectors | ✅ (core) | ⚠️ | ⚠️ | ⚠️ | ✅ | ✅ | ⚠️ | ✅ |
+| GUI workflow builder | ❌ (core) | ❌ | ❌ | ⚠️ | ❌ | ❌ | ❌ | ✅ |
+| Marketplace/ecosystem | ⚠️ (templates) | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ✅ |
 
 ---
 
@@ -56,18 +56,18 @@ Scale: **1 = missing**, **3 = partial**, **5 = best‑in‑class**
 
 ### Raw Scores
 
-| Dimension | GenXAI (Core) | CrewAI | AutoGen | BeeAI | n8n |
-|---|---:|---:|---:|---:|---:|
-| Agent orchestration depth | 4 | 4 | 5 | 3 | 2 |
-| Workflow/graph flexibility | 4 | 3 | 3 | 2 | 5 |
-| Provider breadth | 5 | 3 | 4 | 3 | 4 |
-| Tooling & schemas | 4 | 4 | 4 | 3 | 5 |
-| Memory & persistence | 4 | 2 | 4 | 2 | 3 |
-| Observability & governance | 4 | 2 | 3 | 2 | 5 |
-| Enterprise readiness | 4 | 2 | 3 | 2 | 5 |
-| Ecosystem/connectors | 3 | 4 | 4 | 2 | 5 |
-| UX/automation experience | 2 | 3 | 3 | 3 | 5 |
-| Extensibility/plug‑ins | 3 | 4 | 4 | 2 | 5 |
+| Dimension | GenXAI (Core) | CrewAI | AutoGen | AutoGPT | LangChain | LlamaIndex | BeeAI | n8n |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Agent orchestration depth | 4 | 4 | 5 | 3 | 4 | 3 | 3 | 2 |
+| Workflow/graph flexibility | 4 | 3 | 3 | 2 | 4 | 3 | 2 | 5 |
+| Provider breadth | 5 | 3 | 4 | 3 | 5 | 4 | 3 | 4 |
+| Tooling & schemas | 4 | 4 | 4 | 3 | 5 | 4 | 3 | 5 |
+| Memory & persistence | 4 | 2 | 4 | 2 | 3 | 4 | 2 | 3 |
+| Observability & governance | 4 | 2 | 3 | 2 | 3 | 3 | 2 | 5 |
+| Enterprise readiness | 4 | 2 | 3 | 2 | 4 | 3 | 2 | 5 |
+| Ecosystem/connectors | 3 | 4 | 4 | 3 | 5 | 4 | 2 | 5 |
+| UX/automation experience | 2 | 3 | 3 | 3 | 3 | 3 | 3 | 5 |
+| Extensibility/plug‑ins | 3 | 4 | 4 | 3 | 5 | 4 | 2 | 5 |
 
 ### Weighted Totals
 
@@ -100,6 +100,9 @@ Weighted score formula: **(score / 5) × weight**
 | GenXAI (Core) | 76.8 |
 | CrewAI | 61.8 |
 | AutoGen | 75.2 |
+| AutoGPT | 51.2 |
+| LangChain | 82.2 |
+| LlamaIndex | 69.2 |
 | BeeAI | 48.0 |
 | n8n | 85.0 |
 
@@ -129,6 +132,9 @@ Weighted totals (Enterprise‑First):
 | GenXAI (Core) | 77.0 |
 | CrewAI | 56.8 |
 | AutoGen | 72.2 |
+| AutoGPT | 49.0 |
+| LangChain | 80.4 |
+| LlamaIndex | 68.2 |
 | BeeAI | 44.0 |
 | n8n | 88.0 |
 
@@ -156,26 +162,32 @@ Weighted totals (Developer‑First):
 | GenXAI (Core) | 77.2 |
 | CrewAI | 63.2 |
 | AutoGen | 76.8 |
+| AutoGPT | 52.0 |
+| LangChain | 82.4 |
+| LlamaIndex | 69.2 |
 | BeeAI | 50.4 |
 | n8n | 78.4 |
 
 ### Heat‑Map View (🟥 1–2, 🟨 3, 🟩 4–5)
 
-| Dimension | GenXAI | CrewAI | AutoGen | BeeAI | n8n |
-|---|---|---|---|---|---|
-| Agent orchestration depth | 🟩4 | 🟩4 | 🟩5 | 🟨3 | 🟥2 |
-| Workflow/graph flexibility | 🟩4 | 🟨3 | 🟨3 | 🟥2 | 🟩5 |
-| Provider breadth | 🟩5 | 🟨3 | 🟩4 | 🟨3 | 🟩4 |
-| Tooling & schemas | 🟩4 | 🟩4 | 🟩4 | 🟨3 | 🟩5 |
-| Memory & persistence | 🟩4 | 🟥2 | 🟩4 | 🟥2 | 🟨3 |
-| Observability & governance | 🟩4 | 🟥2 | 🟨3 | 🟥2 | 🟩5 |
-| Enterprise readiness | 🟩4 | 🟥2 | 🟨3 | 🟥2 | 🟩5 |
-| Ecosystem/connectors | 🟨3 | 🟩4 | 🟩4 | 🟥2 | 🟩5 |
-| UX/automation experience | 🟥2 | 🟨3 | 🟨3 | 🟨3 | 🟩5 |
-| Extensibility/plug‑ins | 🟨3 | 🟩4 | 🟩4 | 🟥2 | 🟩5 |
+| Dimension | GenXAI | CrewAI | AutoGen | AutoGPT | LangChain | LlamaIndex | BeeAI | n8n |
+|---|---|---|---|---|---|---|---|---|
+| Agent orchestration depth | 🟩4 | 🟩4 | 🟩5 | 🟨3 | 🟩4 | 🟨3 | 🟨3 | 🟥2 |
+| Workflow/graph flexibility | 🟩4 | 🟨3 | 🟨3 | 🟥2 | 🟩4 | 🟨3 | 🟥2 | 🟩5 |
+| Provider breadth | 🟩5 | 🟨3 | 🟩4 | 🟨3 | 🟩5 | 🟩4 | 🟨3 | 🟩4 |
+| Tooling & schemas | 🟩4 | 🟩4 | 🟩4 | 🟨3 | 🟩5 | 🟩4 | 🟨3 | 🟩5 |
+| Memory & persistence | 🟩4 | 🟥2 | 🟩4 | 🟥2 | 🟨3 | 🟩4 | 🟥2 | 🟨3 |
+| Observability & governance | 🟩4 | 🟥2 | 🟨3 | 🟥2 | 🟨3 | 🟨3 | 🟥2 | 🟩5 |
+| Enterprise readiness | 🟩4 | 🟥2 | 🟨3 | 🟥2 | 🟩4 | 🟨3 | 🟥2 | 🟩5 |
+| Ecosystem/connectors | 🟨3 | 🟩4 | 🟩4 | 🟨3 | 🟩5 | 🟩4 | 🟥2 | 🟩5 |
+| UX/automation experience | 🟥2 | 🟨3 | 🟨3 | 🟨3 | 🟨3 | 🟨3 | 🟨3 | 🟩5 |
+| Extensibility/plug‑ins | 🟨3 | 🟩4 | 🟩4 | 🟨3 | 🟩5 | 🟩4 | 🟥2 | 🟩5 |
 
 **Interpretation**
 - GenXAI scores highest in **provider breadth, graph flexibility, and memory tooling**.
+- LangChain leads in **overall extensibility + ecosystem breadth** among developer frameworks.
+- LlamaIndex is especially strong in **RAG-centric memory/indexing workflows**.
+- AutoGPT remains useful for autonomous loop-style use cases but is less enterprise mature.
 - n8n dominates **automation UX, connectors, and enterprise polish**.
 - AutoGen leads in **multi‑agent research depth** but requires more production scaffolding.
 - CrewAI is strong in **agent collaboration + ecosystem**, less in advanced orchestration.
@@ -212,6 +224,33 @@ Weighted totals (Developer‑First):
 **Weaknesses**
 - Heavier setup for production orchestration.
 - GUI/connector ecosystem is limited (outside of extensions).
+
+### AutoGPT
+**Strengths**
+- Accessible autonomous-agent style workflows and loop-driven execution patterns.
+- Fast prototyping for self-directed task execution.
+
+**Weaknesses**
+- Less mature enterprise controls for governance, security, and observability.
+- Weaker graph abstraction and composability than modern workflow-centric stacks.
+
+### LangChain (+ LangGraph)
+**Strengths**
+- Broadest developer ecosystem for tools, integrations, and model providers.
+- Strong composability with LangGraph for production-grade orchestration patterns.
+
+**Weaknesses**
+- Operational complexity can increase quickly for large deployments.
+- Enterprise guardrails often require additional conventions and platform setup.
+
+### LlamaIndex
+**Strengths**
+- Excellent indexing/retrieval abstractions for RAG-heavy applications.
+- Strong data connector coverage for knowledge-centric workflows.
+
+**Weaknesses**
+- Agent orchestration depth is improving but still less comprehensive than graph-first runtimes.
+- Full production governance/controls may require additional platform layering.
 
 ### BeeAI
 **Strengths**
