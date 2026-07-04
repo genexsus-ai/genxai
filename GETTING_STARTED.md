@@ -145,10 +145,10 @@ response = await llm.generate("Hello, how are you?")
 print(response.content)
 ```
 
-## 📈 Metrics API (Enterprise)
+## 📈 Metrics API (OSS)
 
-The metrics API and observability endpoints are part of the enterprise edition
-and live under `enterprise/`.
+The metrics API and observability endpoints are part of the OSS runtime and
+live under `genxai/observability`.
 
 ## 🎯 Examples
 
@@ -248,12 +248,11 @@ MIT License - see [LICENSE](./LICENSE) for details.
 
 ## 🟢 Enterprise Edition
 
-The Studio UI, connectors, triggers, security, and observability modules
-are staged under `enterprise/` and intended for the **commercial enterprise
-repository**. The OSS CLI ships in `genxai/cli`, while enterprise distributions
-can add extra CLI command groups via plugins or `enterprise/cli` modules. If you
-need those extras, extract `enterprise/` into a private repo and add your
-commercial license.
+The connectors, triggers, security, and observability modules ship in the OSS
+runtime under `genxai/`. The Studio UI is planned as an enterprise-only product
+in a **separate commercial repository** and is not included here. The OSS CLI
+ships in `genxai/cli`; enterprise distributions can add extra CLI command
+groups via plugins.
 
 ## 🆘 Support
 

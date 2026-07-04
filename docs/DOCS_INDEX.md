@@ -11,9 +11,6 @@ Complete guide to GenXAI framework documentation.
 | [README](../README.md) | Project overview and quick start |
 | [GETTING_STARTED](../GETTING_STARTED.md) | Installation and first workflow |
 | [QUICK_START_TUTORIAL](./QUICK_START_TUTORIAL.md) | Step-by-step tutorial with examples |
-| [Studio Guide (Enterprise)](../enterprise/studio/README.md#-studio-walkthrough-userproxy-workflow) | UserProxy walkthrough in Studio (enterprise-only) |
-| [Studio JSON Defaults (Enterprise)](../enterprise/studio/README.md#canvas-json-defaults-userproxy-template) | Copy-paste canvas starter JSON (enterprise-only) |
-| [Studio Template JSON (Enterprise)](../enterprise/studio/exports/user_proxy_template.json) | Importable UserProxy template (enterprise-only) |
 
 ---
 
@@ -130,8 +127,8 @@ enterprise-only):
 - [examples/patterns/](../examples/patterns/) - Common workflow patterns
 
 ### Studio (Visual Workflow Builder)
-- [enterprise/studio/README.md](../enterprise/studio/README.md) - GenXAI Studio overview
-- [enterprise/studio/IMPLEMENTATION_SUMMARY.md](../enterprise/studio/IMPLEMENTATION_SUMMARY.md) - Studio implementation details
+- The Studio UI is planned as an enterprise-only product in a separate
+  commercial repository; it is not included in this repository.
 
 ---
 

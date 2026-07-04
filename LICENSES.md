@@ -4,16 +4,21 @@ This repository contains the **MIT‑licensed GenXAI core framework**.
 
 ## OSS vs Enterprise Summary
 
-- **OSS core (MIT)**: `genxai/`, `examples/`, `docs/`, `tests/`, `scripts/`
+- **OSS core (MIT)**: everything in this repository — `genxai/` (including
+  connectors, triggers, security, and observability), `applications/`,
+  `examples/`, `docs/`, `tests/`, `scripts/`
   - Includes the OSS CLI at `genxai/cli`
-- **Enterprise (commercial)**: everything under `enterprise/` (Studio, enterprise CLI extensions,
-  connectors, triggers, security, observability, metrics)
+- **Enterprise (commercial)**: the Studio UI and Studio-only assets, planned
+  for a separate commercial repository. No enterprise code is included in
+  this repository.
 
 ## Open‑Source (MIT) Scope
 
 The following paths are part of the OSS core and are licensed under **MIT**:
 
-- `genxai/` (core graph/agent/runtime, tools, flows, llm)
+- `genxai/` (core graph/agent/runtime, tools, flows, llm, connectors,
+  triggers, security, observability, CLI)
+- `applications/`
 - `examples/`
 - `docs/`
 - `tests/`
@@ -22,18 +27,15 @@ The following paths are part of the OSS core and are licensed under **MIT**:
 
 ## Enterprise (Commercial) Scope
 
-The following paths are staged for the **enterprise repository** and are **not**
-covered by the MIT license once extracted into the commercial repo:
+The following are **planned** for a separate commercial repository and will
+**not** be covered by the MIT license:
 
-- `enterprise/studio/` (Studio UI + backend)
-- `enterprise/cli/`
-- `enterprise/genxai/security/`
-- `enterprise/genxai/observability/`
-- `enterprise/genxai/connectors/`
-- `enterprise/genxai/triggers/`
+- Studio UI + backend (visual workflow builder)
+- Enterprise-only CLI command groups
+- Any future enterprise modules (e.g., SSO, compliance packs, proprietary
+  connectors)
 
-If additional enterprise modules are added later (e.g., SSO/RBAC, advanced audit,
-compliance packs, proprietary connectors), they should live under `enterprise/`.
+None of these exist in this repository today.
 
 ## Notes
 

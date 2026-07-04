@@ -18,8 +18,8 @@ GenXAI is an advanced agentic AI framework designed to surpass existing solution
 
 > **Open Source vs Enterprise**: This repository contains the **MIT-licensed core framework** plus
 > enterprise-grade runtime features (connectors, triggers, observability, security, CLI extensions).
-> The **Studio UI** remains enterprise-only and is staged under `enterprise/` for a separate
-> commercial repo.
+> The **Studio UI** is planned as an enterprise-only product in a separate commercial repository;
+> its code is not included in this repository.
 
 ## 🧩 Applications
 
@@ -39,8 +39,8 @@ GenXAI is an advanced agentic AI framework designed to surpass existing solution
 - CLI commands: `tool`, `workflow`, `connector`, `metrics`, `approval`, `audit`
 - `examples/`, `docs/`, `tests/`, `scripts/`
 
-**Enterprise (commercial) features** — remain in the enterprise repo:
-- `enterprise/` (Studio UI/backend + Studio-only assets)
+**Enterprise (commercial) features** — planned for a separate commercial repository:
+- Studio UI/backend + Studio-only assets (not included in this repository)
 
 ---
 
@@ -79,13 +79,9 @@ print(stats["backend_plugins"].keys())  # e.g. redis/sqlite/neo4j (when configur
 ```
 
 ### 🎨 No-Code Studio
-The Studio UI and enterprise backend are now staged under:
-
-```
-enterprise/studio/
-```
-
-They are intended for the **enterprise repo** and are **not part of the MIT-licensed core**.
+The Studio UI and its backend are **planned** as an enterprise-only product in a separate
+commercial repository. They are **not part of the MIT-licensed core** and are not included
+in this repository.
 
 ### ⚡ Trigger SDK (OSS)
 Trigger SDKs are part of the OSS runtime and live under `genxai/triggers`.
@@ -371,7 +367,7 @@ pip install "genxai-framework[llm,tools,api]"
 pip install "genxai-framework[all]"
 ```
 
-> For the Studio UI, use the enterprise repository and its commercial license.
+> The Studio UI is planned for a separate commercial repository and is not included here.
 
 ---
 

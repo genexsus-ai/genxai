@@ -159,16 +159,18 @@ Closes #123
 ```
 genxai/
 ├── genxai/              # Core framework
-│   ├── core/           # Core components
-│   ├── tools/          # Tool system
+│   ├── core/           # Agents, graph engine, memory
+│   ├── tools/          # Tool system + MCP server
 │   ├── llm/            # LLM providers
-│   ├── observability/  # Logging & metrics (enterprise)
-├── enterprise/         # Enterprise modules (studio, cli, connectors, triggers)
-│   ├── backend/        # FastAPI backend
-│   └── frontend/       # React frontend
-├── tests/              # Tests
-├── examples/           # Examples
-└── docs/               # Documentation
+│   ├── connectors/     # Kafka, SQS, Slack, GitHub, ...
+│   ├── triggers/       # Webhook, schedule, queue triggers
+│   ├── security/       # RBAC, policies, audit, rate limits
+│   ├── observability/  # Logging & metrics
+│   └── cli/            # OSS CLI
+├── applications/        # Example apps built on the framework
+├── tests/               # Tests
+├── examples/            # Examples
+└── docs/                # Documentation
 ```
 
 ## 🧪 Testing Guidelines
