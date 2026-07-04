@@ -395,7 +395,7 @@ class WorkflowExecutor:
             Execution result with status, result, and metadata
         """
         run_id = run_id or self.execution_store.generate_run_id()
-        record = self.execution_store.create(run_id, workflow="workflow", status="running")
+        self.execution_store.create(run_id, workflow="workflow", status="running")
 
         try:
             logger.info("Starting workflow execution")

@@ -901,7 +901,7 @@ class AgentRuntime:
                                 "name": call["name"],
                                 "arguments": call["arguments"],
                             })
-                    except:
+                    except json.JSONDecodeError:
                         continue
         except Exception as e:
             logger.debug(f"Failed to parse JSON tool calls: {e}")

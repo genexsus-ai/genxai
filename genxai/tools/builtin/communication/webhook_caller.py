@@ -121,7 +121,7 @@ class WebhookCallerTool(Tool):
             # Try to parse JSON response
             try:
                 result["response_data"] = response.json()
-            except:
+            except ValueError:
                 result["response_text"] = response.text
 
         except httpx.HTTPStatusError as e:

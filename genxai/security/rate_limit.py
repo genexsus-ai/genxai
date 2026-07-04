@@ -251,8 +251,6 @@ class RateLimiter:
         Returns:
             Dictionary with remaining requests per period
         """
-        config = RATE_LIMITS.get(tier, RATE_LIMITS["free"])
-        
         minute_key = f"{key}:minute"
         hour_key = f"{key}:hour"
         day_key = f"{key}:day"
