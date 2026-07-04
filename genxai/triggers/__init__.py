@@ -1,11 +1,11 @@
 """Trigger system for GenXAI workflows."""
 
-from enterprise.genxai.triggers.base import BaseTrigger, TriggerEvent, TriggerStatus
-from enterprise.genxai.triggers.file_watcher import FileWatcherTrigger
-from enterprise.genxai.triggers.queue import QueueTrigger
-from enterprise.genxai.triggers.registry import TriggerRegistry
-from enterprise.genxai.triggers.schedule import ScheduleTrigger
-from enterprise.genxai.triggers.webhook import WebhookTrigger
+from genxai.triggers.base import BaseTrigger, TriggerEvent, TriggerStatus
+from genxai.triggers.file_watcher import FileWatcherTrigger
+from genxai.triggers.queue import QueueTrigger
+from genxai.triggers.registry import TriggerRegistry
+from genxai.triggers.schedule import ScheduleTrigger
+from genxai.triggers.webhook import WebhookTrigger
 
 __all__ = [
     "BaseTrigger",

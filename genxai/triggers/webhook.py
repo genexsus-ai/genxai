@@ -7,7 +7,7 @@ import hmac
 import logging
 from typing import Any
 
-from enterprise.genxai.triggers.base import BaseTrigger
+from genxai.triggers.base import BaseTrigger
 
 logger = logging.getLogger(__name__)
 
