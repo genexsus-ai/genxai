@@ -50,6 +50,12 @@ class Graph:
         self._adjacency_list: Dict[str, List[Edge]] = defaultdict(list)
         self._reverse_adjacency: Dict[str, List[str]] = defaultdict(list)
         self.shared_memory: Optional[SharedMemoryBus] = None
+        # Per-run join bookkeeping (rebuilt at the start of each run()).
+        # Edges are keyed by their index in self.edges because Edge.__hash__
+        # collides for duplicate (source, target) pairs.
+        self._edge_index: Dict[int, int] = {}
+        self._incoming_edge_indices: Dict[str, List[int]] = {}
+        self._back_edge_keys: Set[int] = set()
 
     def add_node(self, node: Node) -> None:
         """Add a node to the graph.
@@ -255,9 +261,26 @@ class Graph:
         state.setdefault("node_events", [])
 
         if resume_from:
-            for node_id, status in resume_from.node_statuses.items():
+            for node_id, node_status in resume_from.node_statuses.items():
                 if node_id in self.nodes:
-                    self.nodes[node_id].status = NodeStatus(status)
+                    self.nodes[node_id].status = NodeStatus(node_status)
+            state.setdefault("_edge_resolutions", {})
+        else:
+            # Fresh run: clear statuses left over from a previous run so the
+            # graph is reusable (completed nodes would otherwise be skipped).
+            for node in self.nodes.values():
+                node.status = NodeStatus.PENDING
+                node.result = None
+                node.error = None
+            state["_edge_resolutions"] = {}
+
+        # Build join bookkeeping: edge indices, per-node incoming edges, and
+        # back edges (excluded from join waits so cycles don't deadlock).
+        self._edge_index = {id(edge): i for i, edge in enumerate(self.edges)}
+        self._incoming_edge_indices = defaultdict(list)
+        for i, edge in enumerate(self.edges):
+            self._incoming_edge_indices[edge.target].append(i)
+        self._back_edge_keys = self._compute_back_edges()
 
         # Find entry points (nodes with no incoming edges)
         entry_points = [
@@ -340,8 +363,17 @@ class Graph:
 
         node = self.nodes[node_id]
 
-        # Skip if already completed
-        if node.status == NodeStatus.COMPLETED:
+        # Skip if already completed, or currently executing on a concurrent
+        # branch (two parallel branches converging on a shared descendant
+        # would otherwise execute it twice).
+        if node.status in (NodeStatus.COMPLETED, NodeStatus.RUNNING):
+            return
+
+        # Join semantics: defer until every forward incoming edge has been
+        # resolved (satisfied or declined). The branch that resolves the last
+        # edge re-attempts this node, so it runs exactly once with all
+        # upstream results in state.
+        if not self._node_ready(node_id, state):
             return
 
         # Mark as running
@@ -398,26 +430,41 @@ class Graph:
             # Update state with result
             state[node_id] = result
 
-            # Get outgoing edges and evaluate conditions
+            # Resolve outgoing edges as satisfied or declined so downstream
+            # joins know when all their incoming branches are in. Declined
+            # edges cascade (see _propagate_decline) so joins behind untaken
+            # branches resolve instead of waiting forever.
             outgoing_edges = self.get_outgoing_edges(node_id)
-
-            # Separate parallel and sequential edges
+            resolutions = state.setdefault("_edge_resolutions", {})
             parallel_edges = [e for e in outgoing_edges if e.metadata.get("parallel", False)]
             sequential_edges = [e for e in outgoing_edges if not e.metadata.get("parallel", False)]
 
-            # Execute parallel edges concurrently
-            if parallel_edges:
-                tasks = []
-                for edge in parallel_edges:
-                    if edge.evaluate_condition(state):
-                        tasks.append(self._execute_node(edge.target, state, max_iterations, event_callback))
-                if tasks:
-                    await self._gather_with_config(tasks, state)
-
-            # Execute sequential edges in order
-            for edge in sorted(sequential_edges, key=lambda e: e.priority):
+            # Parallel edges: resolve upfront, then execute taken ones concurrently
+            tasks = []
+            declined_targets: List[str] = []
+            for edge in parallel_edges:
+                edge_key = str(self._edge_index.get(id(edge), -1))
                 if edge.evaluate_condition(state):
+                    resolutions[edge_key] = "satisfied"
+                    tasks.append(self._execute_node(edge.target, state, max_iterations, event_callback))
+                else:
+                    resolutions[edge_key] = "declined"
+                    declined_targets.append(edge.target)
+            for target in declined_targets:
+                await self._propagate_decline(target, state, max_iterations, event_callback)
+            if tasks:
+                await self._gather_with_config(tasks, state)
+
+            # Sequential edges: evaluate lazily in priority order, so a later
+            # edge's condition can read results of earlier siblings.
+            for edge in sorted(sequential_edges, key=lambda e: e.priority):
+                edge_key = str(self._edge_index.get(id(edge), -1))
+                if edge.evaluate_condition(state):
+                    resolutions[edge_key] = "satisfied"
                     await self._execute_node(edge.target, state, max_iterations, event_callback)
+                else:
+                    resolutions[edge_key] = "declined"
+                    await self._propagate_decline(edge.target, state, max_iterations, event_callback)
 
         except Exception as e:
             node.status = NodeStatus.FAILED
@@ -448,6 +495,107 @@ class Graph:
                 "error": str(e),
             }
             raise GraphExecutionError(f"Node {node_id} failed: {e}") from e
+
+    def _node_ready(self, node_id: str, state: Dict[str, Any]) -> bool:
+        """Check whether all forward incoming edges of a node are resolved.
+
+        Back edges (cycles) are excluded so cycle entry nodes don't wait on
+        downstream nodes that haven't run yet.
+        """
+        resolutions = state.get("_edge_resolutions", {})
+        for edge_idx in self._incoming_edge_indices.get(node_id, []):
+            if edge_idx in self._back_edge_keys:
+                continue
+            if str(edge_idx) not in resolutions:
+                return False
+        return True
+
+    async def _propagate_decline(
+        self,
+        node_id: str,
+        state: Dict[str, Any],
+        max_iterations: int,
+        event_callback: Optional[Callable[[Dict[str, Any]], Any]] = None,
+    ) -> None:
+        """Handle a declined incoming edge for a node.
+
+        If other incoming edges are still unresolved, do nothing (the branch
+        that resolves the last one re-attempts). If all are resolved and at
+        least one was satisfied, the node is ready — execute it. If all were
+        declined, the node is on a dead branch: mark it SKIPPED and cascade
+        declines through its outgoing edges.
+        """
+        node = self.nodes.get(node_id)
+        if node is None or node.status != NodeStatus.PENDING:
+            return
+
+        resolutions = state.get("_edge_resolutions", {})
+        incoming = [
+            i for i in self._incoming_edge_indices.get(node_id, [])
+            if i not in self._back_edge_keys
+        ]
+        if any(str(i) not in resolutions for i in incoming):
+            return
+        if any(resolutions.get(str(i)) == "satisfied" for i in incoming):
+            await self._execute_node(node_id, state, max_iterations, event_callback)
+            return
+
+        # Dead branch: every incoming edge declined
+        node.status = NodeStatus.SKIPPED
+        logger.debug(f"Node skipped (all incoming edges declined): {node_id}")
+        skipped_event = {
+            "node_id": node_id,
+            "status": NodeStatus.SKIPPED.value,
+            "timestamp": time.time(),
+        }
+        state.setdefault("node_events", []).append(skipped_event)
+        if event_callback:
+            callback_result = event_callback(skipped_event)
+            if asyncio.iscoroutine(callback_result):
+                await callback_result
+
+        for edge in self.get_outgoing_edges(node_id):
+            edge_key = str(self._edge_index.get(id(edge), -1))
+            resolutions[edge_key] = "declined"
+        for edge in self.get_outgoing_edges(node_id):
+            await self._propagate_decline(edge.target, state, max_iterations, event_callback)
+
+    def _compute_back_edges(self) -> Set[int]:
+        """Identify back edges (edges closing a cycle) via iterative DFS.
+
+        Returns the set of edge indices whose target is an ancestor on the
+        current DFS path. These are excluded from join readiness checks.
+        """
+        back_edges: Set[int] = set()
+        WHITE, GRAY, BLACK = 0, 1, 2
+        color = {node_id: WHITE for node_id in self.nodes}
+
+        # Prefer entry points as DFS roots so back-edge orientation matches
+        # actual execution order; fall back to any unvisited node.
+        entry_points = [n for n in self.nodes if not self.get_incoming_nodes(n)]
+        roots = entry_points + [n for n in self.nodes if n not in entry_points]
+
+        for root in roots:
+            if color[root] != WHITE:
+                continue
+            color[root] = GRAY
+            stack = [(root, iter(self.get_outgoing_edges(root)))]
+            while stack:
+                current, edge_iter = stack[-1]
+                advanced = False
+                for edge in edge_iter:
+                    if color[edge.target] == GRAY:
+                        back_edges.add(self._edge_index[id(edge)])
+                    elif color[edge.target] == WHITE:
+                        color[edge.target] = GRAY
+                        stack.append((edge.target, iter(self.get_outgoing_edges(edge.target))))
+                        advanced = True
+                        break
+                if not advanced:
+                    color[current] = BLACK
+                    stack.pop()
+
+        return back_edges
 
     async def _execute_node_logic(
         self, node: Node, state: Dict[str, Any], max_iterations: int
@@ -667,23 +815,82 @@ class Graph:
     async def _execute_loop_node(
         self, node: Node, state: Dict[str, Any], max_iterations: int
     ) -> Any:
-        """Execute a loop node by iterating until condition is met."""
+        """Execute a loop node, running its body each iteration.
+
+        The loop body is configured via config.data["body"]:
+            {"type": "tool", "tool_name": ..., "tool_params": {...}}
+            {"type": "agent", "agent_id": ..., "task": ...}
+            {"type": "subgraph", "workflow_id": ...}
+
+        The loop exits when config.data["condition"] (a state key) becomes
+        truthy, the loop's own max_iterations is reached, or the workflow's
+        global iteration budget is exhausted. Each iteration's result is
+        stored in state under "loop_<node_id>_last_result" so conditions and
+        downstream nodes can read it.
+        """
         condition_key = node.config.data.get("condition")
         loop_limit = int(node.config.data.get("max_iterations", 5))
+        body = node.config.data.get("body")
         loop_iterations = 0
         results = []
 
         while loop_iterations < loop_limit:
             loop_iterations += 1
-            state_key = f"loop_{node.id}_iteration"
-            state[state_key] = loop_iterations
-            results.append({"iteration": loop_iterations})
+            state[f"loop_{node.id}_iteration"] = loop_iterations
+            state["iterations"] = state.get("iterations", 0) + 1
+
+            iteration_result = None
+            if body:
+                iteration_result = await self._execute_loop_body(node, body, state, max_iterations)
+                state[f"loop_{node.id}_last_result"] = iteration_result
+
+            results.append({"iteration": loop_iterations, "result": iteration_result})
             if condition_key and state.get(condition_key):
                 break
             if state.get("iterations", 0) >= max_iterations:
                 break
 
         return {"iterations": loop_iterations, "results": results}
+
+    async def _execute_loop_body(
+        self, node: Node, body: Dict[str, Any], state: Dict[str, Any], max_iterations: int
+    ) -> Any:
+        """Execute one iteration of a loop node's body."""
+        if not isinstance(body, dict):
+            raise GraphExecutionError(
+                f"Loop node '{node.id}' body must be a dict with a 'type' key"
+            )
+        body_type = body.get("type")
+        body_data = {k: v for k, v in body.items() if k != "type"}
+
+        if body_type == "tool":
+            body_node = Node(
+                id=f"{node.id}__body",
+                type=NodeType.TOOL,
+                config=NodeConfig(type=NodeType.TOOL, data=body_data),
+            )
+            return await self._execute_tool_node(body_node, state)
+
+        if body_type == "agent":
+            body_node = Node(
+                id=f"{node.id}__body",
+                type=NodeType.AGENT,
+                config=NodeConfig(type=NodeType.AGENT, data=body_data),
+            )
+            return await self._execute_agent_node(body_node, state)
+
+        if body_type == "subgraph":
+            body_node = Node(
+                id=f"{node.id}__body",
+                type=NodeType.SUBGRAPH,
+                config=NodeConfig(type=NodeType.SUBGRAPH, data=body_data),
+            )
+            return await self._execute_subgraph_node(body_node, state, max_iterations)
+
+        raise GraphExecutionError(
+            f"Loop node '{node.id}' has unsupported body type: {body_type!r} "
+            "(expected 'tool', 'agent', or 'subgraph')"
+        )
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert graph to dictionary representation.
@@ -813,7 +1020,6 @@ class Graph:
             for i, edge in enumerate(parallel_edges):
                 is_last_parallel = i == len(parallel_edges) - 1 and not sequential_edges
                 new_prefix = prefix + ("    " if is_last else "│   ")
-                condition_marker = " (conditional)" if edge.condition else ""
                 lines.append(f"{new_prefix}║")
                 self._draw_node_tree(
                     edge.target, lines, visited.copy(), new_prefix, is_last_parallel
@@ -823,7 +1029,6 @@ class Graph:
         for i, edge in enumerate(sequential_edges):
             is_last_edge = i == len(sequential_edges) - 1
             new_prefix = prefix + ("    " if is_last else "│   ")
-            condition_marker = " (?)" if edge.condition else ""
 
             if edge.condition:
                 lines.append(f"{new_prefix}│")
