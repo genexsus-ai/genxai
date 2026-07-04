@@ -13,25 +13,26 @@ class AnthropicProvider(LLMProvider):
     """Anthropic Claude LLM provider."""
 
     _MODEL_ALIASES = {
-        # Claude 4.5 models
+        # Current-generation IDs (claude-fable-5, claude-opus-4-8, claude-opus-4-7,
+        # claude-opus-4-6, claude-sonnet-5, claude-sonnet-4-6, claude-haiku-4-5)
+        # are complete as-is and pass through unchanged.
+        # Legacy models still served under dated snapshot IDs
+        "claude-opus-4-5": "claude-opus-4-5-20251101",
         "claude-sonnet-4-5": "claude-sonnet-4-5-20250929",
         "claude-haiku-4-5": "claude-haiku-4-5-20251001",
-        "claude-opus-4-5": "claude-opus-4-5-20251101",
-        # Claude 4 models
-        "claude-sonnet-4": "claude-sonnet-4-20250514",
-        "claude-opus-4": "claude-opus-4-20250514",
         "claude-opus-4-1": "claude-opus-4-1-20250805",
-        # Claude 3.5 models
-        "claude-3-5-sonnet": "claude-3-5-sonnet-20241022",
-        # Claude 3 models
-        "claude-3-opus": "claude-3-opus-20240229",
-        "claude-3-sonnet": "claude-3-sonnet-20240229",
-        "claude-3-haiku": "claude-3-haiku-20240307",
+        # Retired shorthands mapped to their recommended replacements
+        "claude-opus-4": "claude-opus-4-8",
+        "claude-sonnet-4": "claude-sonnet-5",
+        "claude-3-5-sonnet": "claude-sonnet-5",
+        "claude-3-opus": "claude-opus-4-8",
+        "claude-3-sonnet": "claude-sonnet-5",
+        "claude-3-haiku": "claude-haiku-4-5-20251001",
     }
 
     def __init__(
         self,
-        model: str = "claude-3-opus-20240229",
+        model: str = "claude-opus-4-8",
         api_key: Optional[str] = None,
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
@@ -40,7 +41,7 @@ class AnthropicProvider(LLMProvider):
         """Initialize Anthropic provider.
 
         Args:
-            model: Model name (claude-3-opus, claude-3-sonnet, claude-3-haiku)
+            model: Model name (e.g. claude-opus-4-8, claude-sonnet-5, claude-haiku-4-5)
             api_key: Anthropic API key (defaults to ANTHROPIC_API_KEY env var)
             temperature: Sampling temperature
             max_tokens: Maximum tokens to generate
@@ -355,27 +356,30 @@ class AnthropicProvider(LLMProvider):
     @staticmethod
     def _fallback_model(model: str) -> Optional[str]:
         model_lower = model.lower()
-        # Claude 4.5 fallbacks
-        if model_lower.startswith("claude-sonnet-4-5") or model_lower.startswith("claude-opus-4-5"):
-            return "claude-sonnet-4-20250514"
-        if model_lower.startswith("claude-haiku-4-5"):
-            return "claude-haiku-4-5-20251001"
-        # Claude 4 fallbacks
-        if model_lower.startswith("claude-opus-4"):
-            return "claude-sonnet-4-20250514"
-        if model_lower.startswith("claude-sonnet-4"):
-            return "claude-3-5-sonnet-20241022"
-        # Claude 3.5 fallbacks
-        if model_lower.startswith("claude-3-5"):
-            return "claude-3-sonnet-20240229"
-        # Claude 3 fallbacks
+        # Claude 5 family fallbacks
+        if model_lower.startswith(("claude-fable-5", "claude-mythos-5")):
+            return "claude-opus-4-8"
+        if model_lower.startswith("claude-sonnet-5"):
+            return "claude-sonnet-4-6"
+        # Claude 3 legacy names (check before the generic opus/sonnet branches)
         if model_lower.startswith("claude-3-opus"):
-            return "claude-3-sonnet-20240229"
-        if model_lower.startswith("claude-3-sonnet"):
-            return "claude-3-haiku-20240307"
-        if model_lower.startswith("claude-3-haiku"):
-            return "claude-3-haiku-20240307"
+            return "claude-opus-4-8"
+        if model_lower.startswith(("claude-3-5-sonnet", "claude-3-7-sonnet", "claude-3-sonnet")):
+            return "claude-sonnet-5"
+        if model_lower.startswith("claude-3"):
+            return "claude-haiku-4-5"
+        # Opus 4.x fallbacks
+        if model_lower.startswith("claude-opus-4-8"):
+            return "claude-sonnet-5"
+        if model_lower.startswith("claude-opus"):
+            return "claude-opus-4-8"
+        # Sonnet 4.x fallbacks
+        if model_lower.startswith("claude-sonnet"):
+            return "claude-sonnet-5"
+        # Haiku fallback
+        if model_lower.startswith("claude-haiku"):
+            return "claude-sonnet-4-6"
         # Generic Claude fallback
         if model_lower.startswith("claude"):
-            return "claude-3-haiku-20240307"
+            return "claude-haiku-4-5"
         return None

@@ -18,8 +18,8 @@ class LLMProviderFactory:
         "gpt-4",
         "gpt-4-turbo",
         "gpt-3.5-turbo",
-        "claude-3-sonnet",
-        "claude-3-haiku",
+        "claude-sonnet-5",
+        "claude-haiku-4-5",
     ]
 
     _providers: Dict[str, type[LLMProvider]] = {
@@ -34,6 +34,13 @@ class LLMProviderFactory:
     # Lazy-loaded providers (imported on demand)
     _provider_modules: Dict[str, str] = {
         "anthropic": "genxai.llm.providers.anthropic.AnthropicProvider",
+        "claude-fable-5": "genxai.llm.providers.anthropic.AnthropicProvider",
+        "claude-opus-4-8": "genxai.llm.providers.anthropic.AnthropicProvider",
+        "claude-opus-4-7": "genxai.llm.providers.anthropic.AnthropicProvider",
+        "claude-opus-4-6": "genxai.llm.providers.anthropic.AnthropicProvider",
+        "claude-sonnet-5": "genxai.llm.providers.anthropic.AnthropicProvider",
+        "claude-sonnet-4-6": "genxai.llm.providers.anthropic.AnthropicProvider",
+        "claude-haiku-4-5": "genxai.llm.providers.anthropic.AnthropicProvider",
         "claude-3-opus": "genxai.llm.providers.anthropic.AnthropicProvider",
         "claude-3-sonnet": "genxai.llm.providers.anthropic.AnthropicProvider",
         "claude-3-haiku": "genxai.llm.providers.anthropic.AnthropicProvider",

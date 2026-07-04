@@ -69,30 +69,35 @@ class GoogleProvider(LLMProvider):
 
             raise RuntimeError("google.genai does not expose a known client API")
         except ImportError:
-            with warnings.catch_warnings():
-                warnings.filterwarnings(
-                    "ignore",
-                    category=FutureWarning,
-                    module=r"google\.generativeai",
-                )
-                warnings.filterwarnings(
-                    "ignore",
-                    message=r"All support for the `google.generativeai` package has ended.*",
-                    category=FutureWarning,
-                )
-                genai = importlib.import_module("google.generativeai")
+            try:
+                with warnings.catch_warnings():
+                    warnings.filterwarnings(
+                        "ignore",
+                        category=FutureWarning,
+                        module=r"google\.generativeai",
+                    )
+                    warnings.filterwarnings(
+                        "ignore",
+                        message=r"All support for the `google.generativeai` package has ended.*",
+                        category=FutureWarning,
+                    )
+                    genai = importlib.import_module("google.generativeai")
 
-            genai.configure(api_key=self.api_key)
-            self._client = genai
-            self._model_instance = genai.GenerativeModel(self.model)
-            logger.info(f"Google Gemini client initialized with model: {self.model}")
-        except ImportError:
-            logger.error(
-                "Google Generative AI package not installed. "
-                "Install with: pip install google-genai"
-            )
-            self._client = None
-            self._model_instance = None
+                genai.configure(api_key=self.api_key)
+                self._client = genai
+                self._model_instance = genai.GenerativeModel(self.model)
+                logger.info(f"Google Gemini client initialized with model: {self.model}")
+            except ImportError:
+                logger.error(
+                    "Google Generative AI package not installed. "
+                    "Install with: pip install google-genai"
+                )
+                self._client = None
+                self._model_instance = None
+            except Exception as e:
+                logger.error(f"Failed to initialize Google client: {e}")
+                self._client = None
+                self._model_instance = None
         except Exception as e:
             logger.error(f"Failed to initialize Google client: {e}")
             self._client = None
