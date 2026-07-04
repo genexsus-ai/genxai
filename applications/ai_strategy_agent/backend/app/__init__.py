@@ -1,1 +1,0 @@
-"""AI Strategy Agent backend application package."""
