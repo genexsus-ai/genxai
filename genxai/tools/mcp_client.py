@@ -156,3 +156,73 @@ class MCPToolClient:
             "content": blocks,
             "structured": structured,
         }
+
+
+_JSON_TO_TOOL_TYPE = {
+    "string": "string",
+    "number": "number",
+    "integer": "number",
+    "boolean": "boolean",
+    "array": "array",
+    "object": "object",
+}
+
+
+def _sanitize_name(value: str) -> str:
+    return "".join(c if (c.isalnum() or c in "-_") else "_" for c in value)
+
+
+def _build_proxy_class():
+    """Deferred import so the mcp package stays optional for the base client."""
+    from genxai.tools.base import Tool, ToolCategory, ToolMetadata, ToolParameter
+
+    class _MCPProxyTool(Tool):
+        """Exposes one remote MCP tool as a regular genxai Tool.
+
+        Named ``mcp__{server}__{tool}`` so agents can list it in their
+        AgentConfig.tools like any built-in tool. Parameters are derived
+        from the MCP tool's JSON input schema, so schema-based tool calling
+        works transparently.
+        """
+
+        def __init__(self, client: MCPToolClient, server_name: str, tool_info: dict[str, Any]) -> None:
+            schema = tool_info.get("input_schema") or {}
+            properties: dict[str, Any] = schema.get("properties") or {}
+            required = set(schema.get("required") or [])
+            parameters = [
+                ToolParameter(
+                    name=param_name,
+                    type=_JSON_TO_TOOL_TYPE.get(spec.get("type", ""), "object"),
+                    description=spec.get("description") or spec.get("title") or param_name,
+                    required=param_name in required,
+                )
+                for param_name, spec in properties.items()
+            ]
+            remote_name = tool_info["name"]
+            super().__init__(
+                metadata=ToolMetadata(
+                    name=f"mcp__{_sanitize_name(server_name)}__{_sanitize_name(remote_name)}",
+                    description=tool_info.get("description") or f"MCP tool {remote_name} on {server_name}",
+                    category=ToolCategory.SYSTEM,
+                    tags=["mcp", server_name],
+                ),
+                parameters=parameters,
+            )
+            self._client = client
+            self._remote_name = remote_name
+
+        async def _execute(self, **kwargs: Any) -> Any:
+            result = await self._client.call_tool(self._remote_name, kwargs)
+            if result["is_error"]:
+                raise RuntimeError(
+                    f"MCP tool '{self._remote_name}' returned an error: {result['text']}"
+                )
+            return result["structured"] if result["structured"] is not None else result["text"]
+
+    return _MCPProxyTool
+
+
+async def load_mcp_agent_tools(client: MCPToolClient, server_name: str) -> list[Any]:
+    """List a server's tools and wrap each as an agent-usable genxai Tool."""
+    proxy_class = _build_proxy_class()
+    return [proxy_class(client, server_name, info) for info in await client.list_tools()]

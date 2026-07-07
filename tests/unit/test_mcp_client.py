@@ -49,3 +49,27 @@ async def test_unreachable_server_raises_clear_error():
     bad = MCPToolClient(command=sys.executable, args=["-c", "import sys; sys.exit(1)"])
     with pytest.raises(MCPClientError):
         await bad.list_tools()
+
+
+@pytest.mark.asyncio
+async def test_load_mcp_agent_tools_wraps_remote_tools():
+    from genxai.tools.mcp_client import load_mcp_agent_tools
+
+    tools = await load_mcp_agent_tools(_client(), "local-tools")
+    by_name = {tool.metadata.name: tool for tool in tools}
+    assert "mcp__local-tools__add" in by_name
+    assert "mcp__local-tools__echo" in by_name
+
+    add = by_name["mcp__local-tools__add"]
+    params = {p.name: p for p in add.parameters}
+    assert params["a"].required and params["a"].type == "number"
+    assert "mcp" in add.metadata.tags and "local-tools" in add.metadata.tags
+
+    # executes through the real MCP server, schema-validated
+    result = await add.execute(a=40, b=2)
+    assert result.success is True
+    assert result.data == {"sum": 42.0}
+
+    # missing required param is rejected by genxai validation before the call
+    invalid = await add.execute(a=40)
+    assert invalid.success is False
