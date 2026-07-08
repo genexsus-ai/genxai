@@ -9,13 +9,14 @@ Provides the `tool`, `workflow`, `connector`, `metrics`, `approval`, and
 
 import click
 
+from genxai import __version__
 from genxai.cli.commands import connector, metrics, tool, workflow
 from genxai.cli.commands.approval import approval
 from genxai.cli.commands.audit import audit
 
 
 @click.group()
-@click.version_option(version='0.1.0', prog_name='genxai')
+@click.version_option(version=__version__, prog_name='genxai')
 def cli():
     """GenXAI - Multi-Agent AI Framework CLI.
     

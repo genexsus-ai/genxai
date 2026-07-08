@@ -9,7 +9,7 @@ from importlib.metadata import PackageNotFoundError, version
 
 try:
     # Prefer the installed distribution version (matches pyproject.toml).
-    __version__ = version("genxai")
+    __version__ = version("genxai-framework")
 except PackageNotFoundError:  # pragma: no cover
     # Source checkout without an installed distribution.
     __version__ = "0.0.0"

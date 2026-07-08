@@ -107,7 +107,7 @@ api = [
 ]
 
 all = [
-    "genxai[dev,llm,storage,tools,api]",
+    "genxai-framework[dev,llm,storage,tools,api]",
 ]
 
 [project.urls]
