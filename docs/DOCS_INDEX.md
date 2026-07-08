@@ -20,8 +20,10 @@ Complete guide to GenXAI framework documentation.
 |----------|-------------|
 | [ARCHITECTURE](../ARCHITECTURE.md) | System architecture and design principles |
 | [WORKFLOW_BEST_PRACTICES](./WORKFLOW_BEST_PRACTICES.md) | Best practices for workflow design |
+| [AGENT_CATALOG](./AGENT_CATALOG.md) | Every reusable agent and agent-team primitive, with application recipes |
 | [AGENT_TOOL_INTEGRATION](./AGENT_TOOL_INTEGRATION.md) | Agent and tool integration guide |
 | [FLOWS](./FLOWS.md) | Flow orchestrators for common coordination patterns |
+| [WORKFLOW_GENERATION](./WORKFLOW_GENERATION.md) | Natural-language workflow generation with the planner/delegator/worker crew |
 | [WORKFLOW_COMPOSITION](./WORKFLOW_COMPOSITION.md) | Compose global workflows with subflows + deterministic steps |
 | [WORKFLOW_COMPOSITION_JSON](./diagrams/workflow_composition.json) | JSON snapshot of the workflow composition graph |
 | [COMPARISON](./COMPARISON.md) | CrewAI vs GenXAI comparison guide |
