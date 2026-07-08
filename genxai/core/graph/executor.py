@@ -319,7 +319,9 @@ class WorkflowExecutor:
                 tool_name = config.get("tool_name") or config.get("name") or "tool"
                 tool_params = config.get("tool_params") or {}
                 graph.add_node(ToolNode(id=node_id, tool_name=tool_name, tool_params=tool_params))
-            elif node_type == "decision":
+            elif node_type in {"decision", "condition"}:
+                # "condition" is the YAML DSL name (workflow_io); "decision" is
+                # the Studio UI name. Both build the same node.
                 condition = config.get("condition", "")
                 graph.add_node(ConditionNode(id=node_id, condition=condition))
             elif node_type == "subgraph":
