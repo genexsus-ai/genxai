@@ -166,6 +166,18 @@ class LLMProvider(ABC):
 
         self._client = None
 
+    def _ensure_client(self) -> None:
+        """Re-create the underlying client if it was closed.
+
+        ``aclose()`` nulls ``_client`` (e.g. AgentRuntime.execute closes its
+        provider when a call finishes), so long-lived providers reused across
+        calls — flow iterations, batch execution — must be able to reopen.
+        """
+        if getattr(self, "_client", None) is None:
+            initialize = getattr(self, "_initialize_client", None)
+            if initialize is not None:
+                initialize()
+
     def close(self) -> None:
         """Synchronously close any underlying async client resources."""
         try:

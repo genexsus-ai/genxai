@@ -94,6 +94,7 @@ class AnthropicProvider(LLMProvider):
             RuntimeError: If client not initialized
             Exception: If API call fails
         """
+        self._ensure_client()
         if not self._client:
             raise RuntimeError("Anthropic client not initialized")
 
@@ -198,6 +199,7 @@ class AnthropicProvider(LLMProvider):
         Raises:
             RuntimeError: If client not initialized
         """
+        self._ensure_client()
         if not self._client:
             raise RuntimeError("Anthropic client not initialized")
 
@@ -242,6 +244,7 @@ class AnthropicProvider(LLMProvider):
         Returns:
             LLM response
         """
+        self._ensure_client()
         if not self._client:
             raise RuntimeError("Anthropic client not initialized")
 

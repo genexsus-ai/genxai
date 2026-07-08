@@ -129,10 +129,17 @@ async def test_generate_without_system_prompt(mock_cohere_client):
 
 @pytest.mark.asyncio
 async def test_generate_no_client():
-    """Test generation without initialized client."""
+    """A closed client is lazily re-created; only an impossible re-init raises."""
     provider = CohereProvider(model="command", api_key="test-key")
+
+    # Closed client (e.g. by AgentRuntime.execute's cleanup) is re-created
     provider._client = None
-    
+    provider._ensure_client()
+    assert provider._client is not None
+
+    # If re-initialization cannot restore a client, generate still raises
+    provider._client = None
+    provider._initialize_client = lambda: None
     with pytest.raises(RuntimeError, match="Cohere client not initialized"):
         await provider.generate(prompt="Test")
     provider.close()

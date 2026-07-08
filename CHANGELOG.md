@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Per-node execution policies (retry, timeout, continue-on-error).
 
 ### Fixed
+- LLM providers now lazily re-create a closed client (`_ensure_client`). `AgentRuntime.execute()` closes its provider after each call, so flows that reuse runtimes across iterations (critic review round 2, p2p rounds, batch execution) failed with "client not initialized".
 - Runtime-orchestrated flows (Auction/CoordinatorWorker/CriticReview/EnsembleVoting/MapReduce/P2P) were uninstantiable (abstract `build_graph`).
 - `__version__` resolved the wrong distribution name ("genxai" → "genxai-framework") and reported 0.0.0; CLI `--version` now reports the real version.
 

@@ -74,6 +74,7 @@ class CohereProvider(LLMProvider):
             RuntimeError: If client not initialized
             Exception: If API call fails
         """
+        self._ensure_client()
         if not self._client:
             raise RuntimeError("Cohere client not initialized")
 
@@ -155,6 +156,7 @@ class CohereProvider(LLMProvider):
         Raises:
             RuntimeError: If client not initialized
         """
+        self._ensure_client()
         if not self._client:
             raise RuntimeError("Cohere client not initialized")
 
@@ -201,6 +203,7 @@ class CohereProvider(LLMProvider):
         Returns:
             LLM response
         """
+        self._ensure_client()
         if not self._client:
             raise RuntimeError("Cohere client not initialized")
 
