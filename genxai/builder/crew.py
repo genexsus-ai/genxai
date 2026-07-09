@@ -204,11 +204,12 @@ async def run_agent_designer(
     *,
     llm_provider: LLMProvider,
 ) -> AgentDesignOutput:
+    steps_json = _plan_steps_json(plan, packet.step_ids)
     prompt = (
         f"Design one agent per assigned step.\n"
         f"Packet objective: {packet.objective}\n"
-        f"Assigned steps:\n{_plan_steps_json(plan, packet.step_ids)}\n\n"
-        f"{catalog.to_prompt_context(max_chars=6000)}\n\n"
+        f"Assigned steps:\n{steps_json}\n\n"
+        f"{catalog.to_prompt_context(max_chars=6000, request=steps_json, section_limit=25)}\n\n"
         "Return one spec per assigned step_id. Use only catalog tool names."
     )
     result = await generate_structured(
@@ -227,11 +228,12 @@ async def run_node_designer(
     *,
     llm_provider: LLMProvider,
 ) -> NodeDesignOutput:
+    steps_json = _plan_steps_json(plan, packet.step_ids)
     prompt = (
         f"Configure each assigned workflow step.\n"
         f"Packet objective: {packet.objective}\n"
-        f"Assigned steps:\n{_plan_steps_json(plan, packet.step_ids)}\n\n"
-        f"{catalog.to_prompt_context(max_chars=6000)}\n\n"
+        f"Assigned steps:\n{steps_json}\n\n"
+        f"{catalog.to_prompt_context(max_chars=6000, request=steps_json, section_limit=25)}\n\n"
         "Return one spec per assigned step_id. For tool/connector/mcp steps "
         "set capability to exactly one catalog name; for decision/loop steps "
         "set a precise condition."

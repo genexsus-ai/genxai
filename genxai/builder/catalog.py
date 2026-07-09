@@ -8,6 +8,7 @@ as compact prompt context and validates capability names in generated plans.
 
 from __future__ import annotations
 
+import re
 import textwrap
 from typing import Any
 
@@ -31,6 +32,18 @@ _FLOW_DESCRIPTIONS: dict[str, str] = {
     "map_reduce": "All agents but the last work in parallel; the last combines results.",
     "p2p": "Agents exchange messages peer-to-peer until convergence.",
 }
+
+
+def _tokens(text: str) -> set[str]:
+    return set(re.findall(r"[a-z0-9]+", text.lower()))
+
+
+def _relevance(request_tokens: set[str], entry: CapabilityEntry) -> float:
+    """Token overlap between a request and an entry's name + description."""
+    entry_tokens = _tokens(f"{entry.name} {entry.description}")
+    if not request_tokens or not entry_tokens:
+        return 0.0
+    return len(request_tokens & entry_tokens) / len(request_tokens)
 
 
 class CapabilityEntry(BaseModel):
@@ -71,16 +84,39 @@ class CapabilityCatalog(BaseModel):
         """Requested capability names that do not exist in the catalog."""
         return set(requested) - self.names()
 
-    def to_prompt_context(self, max_chars: int | None = None) -> str:
+    def to_prompt_context(
+        self,
+        max_chars: int | None = None,
+        *,
+        request: str | None = None,
+        section_limit: int | None = None,
+    ) -> str:
         """Render the catalog as compact text for planner/worker prompts.
 
-        With ``max_chars``, sections are truncated entry-by-entry and a note is
-        appended so the model knows the inventory is partial.
+        With ``request`` and ``section_limit``, oversized sections show only
+        the entries most relevant to the request (token-overlap ranking) so
+        prompt size stays flat as the catalog grows — grounding via
+        :meth:`names` still sees the full catalog. With ``max_chars``, the
+        final text is truncated with a note so the model knows the inventory
+        is partial.
         """
+        request_tokens = _tokens(request) if request else set()
         blocks: list[str] = []
         for section, entries in self.sections.items():
-            lines = [f"## Available {section} capabilities ({len(entries)})"]
-            lines.extend(entry.to_prompt_line() for entry in entries)
+            shown = entries
+            header = f"## Available {section} capabilities ({len(entries)})"
+            if request_tokens and section_limit is not None and len(entries) > section_limit:
+                ranked = sorted(
+                    entries,
+                    key=lambda entry: (-_relevance(request_tokens, entry), entry.name),
+                )
+                shown = sorted(ranked[:section_limit], key=lambda entry: entry.name)
+                header = (
+                    f"## Available {section} capabilities "
+                    f"(showing the {section_limit} of {len(entries)} most relevant)"
+                )
+            lines = [header]
+            lines.extend(entry.to_prompt_line() for entry in shown)
             blocks.append("\n".join(lines))
         text = "\n\n".join(blocks)
 

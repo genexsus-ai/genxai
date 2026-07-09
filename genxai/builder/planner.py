@@ -20,6 +20,10 @@ from genxai.utils.structured import generate_structured
 
 logger = logging.getLogger(__name__)
 
+# Sections larger than this show only the most request-relevant entries in
+# the prompt (grounding still validates against the full catalog).
+_CATALOG_SECTION_LIMIT = 40
+
 PLANNER_SYSTEM_PROMPT = (
     "You are an expert workflow architect. You turn a user's natural-language "
     "request into a precise, minimal workflow plan. You only use capabilities "
@@ -100,7 +104,11 @@ def build_planner_prompt(
     parts = [
         f"User request:\n{request}",
         _PLAN_GUIDELINES,
-        catalog.to_prompt_context(max_chars=max_catalog_chars),
+        catalog.to_prompt_context(
+            max_chars=max_catalog_chars,
+            request=request,
+            section_limit=_CATALOG_SECTION_LIMIT,
+        ),
         _EXAMPLE_PLAN,
     ]
     if memory_context:
