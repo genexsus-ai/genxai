@@ -39,6 +39,23 @@ print(result["output"])
 
 Where: `genxai/core/agent/base.py` (config/factory), `genxai/core/agent/runtime.py` (execution).
 
+**The agent library** (`genxai/agents/library.py`) — twelve curated,
+ready-to-use role agents with tuned role/goal/backstory/temperature and
+default tools: `researcher`, `summarizer`, `writer`, `editor`, `classifier`,
+`extractor`, `data_analyst`, `translator`, `qa_reviewer`, `task_planner`,
+`support_responder`, `escalation_handler`. Every field is overridable:
+
+```python
+from genxai.agents import researcher, editor
+
+market = researcher(id="market_researcher", goal="Research fintech competitors")
+critic = editor()                      # as-is
+```
+
+Also available as YAML for no-code workflows (`export_library_yaml(path)`
+then `agents_ref: library_agents.yaml`), and fed to the generation crew's
+agent designer as quality exemplars automatically.
+
 **Presets** (`genxai/agents/presets.py`):
 
 | Preset | What it is | Use for |

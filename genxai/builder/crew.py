@@ -204,12 +204,15 @@ async def run_agent_designer(
     *,
     llm_provider: LLMProvider,
 ) -> AgentDesignOutput:
+    from genxai.agents.library import render_library_for_prompt
+
     steps_json = _plan_steps_json(plan, packet.step_ids)
     prompt = (
         f"Design one agent per assigned step.\n"
         f"Packet objective: {packet.objective}\n"
         f"Assigned steps:\n{steps_json}\n\n"
         f"{catalog.to_prompt_context(max_chars=6000, request=steps_json, section_limit=25)}\n\n"
+        f"{render_library_for_prompt()}\n\n"
         "Return one spec per assigned step_id. Use only catalog tool names."
     )
     result = await generate_structured(
