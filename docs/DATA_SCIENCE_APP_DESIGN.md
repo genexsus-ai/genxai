@@ -1,6 +1,6 @@
 # Data Science App — Design
 
-Status: **P1 implemented** (analysis/cell store, agent loop with self-repair, manual cells, rerun/edit/delete, DS app UI. P2: charts, rerun-all, cell->dataset. P3: scheduled reports, ML primitives)
+Status: **P1 + P2 implemented** (agent loop, manual cells, charts, edit-SQL, rerun-all, cell->dataset. P3 pending: scheduled reports, ML primitives)
 Scope: the third GenXAI app — agent-driven data analysis over the shared
 data catalog. Not an embedded Jupyter: every "cell" is a question a person
 asks; an agent plans, executes read-only SQL, and narrates.
