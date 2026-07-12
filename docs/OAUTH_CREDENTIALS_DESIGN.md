@@ -1,6 +1,6 @@
 # Managed OAuth Credentials — Design
 
-Status: **P1 implemented** (GitHub end-to-end; P2 refresh + Google pending)
+Status: **P1 + P2 implemented** (GitHub + Google end-to-end with transparent refresh; P3 Slack/Microsoft pending)
 Scope: Workflow Studio backend + frontend, small framework-level refresh hook.
 
 ## Problem
