@@ -337,3 +337,40 @@ async def test_trigger_workflow_runner_executes_workflow():
     result = await runner.handle_event(event)
 
     assert result["status"] in {"success", "error"}
+
+
+def test_normalize_cron_weekdays_translates_numbers():
+    from genxai.triggers.schedule import _normalize_cron_weekdays
+
+    # Standard crontab is 0=Sunday; APScheduler numerics are 0=Monday, so
+    # numbers become unambiguous names
+    assert _normalize_cron_weekdays("0 9 * * 1-5") == "0 9 * * mon-fri"
+    assert _normalize_cron_weekdays("0 9 * * 0") == "0 9 * * sun"
+    assert _normalize_cron_weekdays("0 9 * * 7") == "0 9 * * sun"
+    assert _normalize_cron_weekdays("0 9 * * 0,3,6") == "0 9 * * sun,wed,sat"
+    # Step suffix stays numeric; other fields untouched
+    assert _normalize_cron_weekdays("*/5 9 1 6 1-5/2") == "*/5 9 1 6 mon-fri/2"
+    assert _normalize_cron_weekdays("0 9 * * *") == "0 9 * * *"
+    assert _normalize_cron_weekdays("0 9 * * mon-fri") == "0 9 * * mon-fri"
+    # Malformed expressions pass through for from_crontab to reject
+    assert _normalize_cron_weekdays("0 9 * *") == "0 9 * *"
+
+
+def test_schedule_trigger_cron_weekdays_match_crontab_semantics():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from apscheduler.triggers.cron import CronTrigger
+
+    from genxai.triggers.schedule import _normalize_cron_weekdays
+
+    tz = ZoneInfo("America/New_York")
+    saturday = datetime(2026, 7, 11, 12, 0, tzinfo=tz)
+    trigger = CronTrigger.from_crontab(
+        _normalize_cron_weekdays("0 9 * * 1-5"), timezone=tz
+    )
+
+    next_fire = trigger.get_next_fire_time(None, saturday)
+
+    # Cron "1-5" means Mon-Fri: next fire after Saturday is Monday
+    assert next_fire.strftime("%A") == "Monday"

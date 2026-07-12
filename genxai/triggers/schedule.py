@@ -3,12 +3,35 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import UTC, datetime
 from typing import Any
 
 from genxai.triggers.base import BaseTrigger
 
 logger = logging.getLogger(__name__)
+
+# Standard crontab weekday numbers (0=Sunday) by index; 7 also means Sunday.
+_CRON_WEEKDAY_NAMES = ("sun", "mon", "tue", "wed", "thu", "fri", "sat")
+
+
+def _normalize_cron_weekdays(cron: str) -> str:
+    """Rewrite numeric weekdays in a crontab expression as day names.
+
+    APScheduler's ``CronTrigger.from_crontab`` interprets numeric day-of-week
+    with 0=Monday, while standard crontab uses 0=Sunday — so ``1-5`` would
+    silently mean Tue–Sat. Day names are unambiguous, so translate every
+    number in the day-of-week field (step suffixes like ``/2`` excluded).
+    """
+    fields = cron.split()
+    if len(fields) != 5:
+        return cron  # let from_crontab raise its own error
+    dow, _, step = fields[4].partition("/")
+    dow = re.sub(
+        r"\d+", lambda m: _CRON_WEEKDAY_NAMES[int(m.group()) % 7], dow
+    )
+    fields[4] = f"{dow}/{step}" if step else dow
+    return " ".join(fields)
 
 
 class ScheduleTrigger(BaseTrigger):
@@ -47,7 +70,9 @@ class ScheduleTrigger(BaseTrigger):
         scheduler = AsyncIOScheduler(timezone=self.timezone)
 
         if self.cron:
-            trigger = CronTrigger.from_crontab(self.cron, timezone=self.timezone)
+            trigger = CronTrigger.from_crontab(
+                _normalize_cron_weekdays(self.cron), timezone=self.timezone
+            )
         else:
             trigger = IntervalTrigger(seconds=self.interval_seconds)
 
