@@ -1,6 +1,8 @@
 # Data Science App — Design
 
-Status: **fully implemented** (P1-P3: agent loop, charts, rerun-all, cell->dataset, scheduled reports, ML primitives)
+Status: **v1 fully implemented** (interactive analyses: agent loop, charts,
+rerun-all, cell->dataset, scheduled reports, ML primitives).
+**v2 proposed below: Experiments — a multi-agent data science crew.**
 Scope: the third GenXAI app — agent-driven data analysis over the shared
 data catalog. Not an embedded Jupyter: every "cell" is a question a person
 asks; an agent plans, executes read-only SQL, and narrates.
@@ -161,3 +163,113 @@ POST   /datascience/analyses/{id}/materialize/{cell_id}  {dataset}    # cell res
 - Real-time collaborative editing (single-tenant studio).
 - AutoML — the ML phase is deliberately "a few honest primitives," not a
   model zoo.
+
+---
+
+# v2: Experiments — the multi-agent data science crew
+
+Status: **proposed**
+
+v1's analyses answer *questions* with a fixed two-agent pipeline (SQL
+Planner → Insight Narrator). v2 adds **Experiments**: the user states an
+*objective* ("predict churn from `customers`", "understand what drives
+returns") and a **crew of specialist agents** runs the full data-science
+lifecycle, producing inspectable artifacts at every stage. Interactive
+analyses stay as they are — Experiments are the second mode, not a
+replacement.
+
+## The honesty principle: agents write artifacts, not arbitrary code
+
+Every "programming" act in an experiment produces a **declarative,
+validated, replayable artifact** — read-only DuckDB SQL, a train spec, an
+evaluation spec — never arbitrary Python. This keeps the no-sandbox
+security model intact (same `validate_readonly_sql` gate everywhere),
+makes every agent decision reviewable by humans *and* by the review
+agent, and means a finished experiment is a rerunnable pipeline, not a
+transcript. (A sandboxed Python executor can be bolted on later as an
+opt-in stage type; it is explicitly out of v2 scope.)
+
+## The crew
+
+Built on `genxai.flows` patterns (delegator + critic_review), mirroring
+the proven `builder.crew` architecture:
+
+| Agent | Role | Artifact it produces |
+|---|---|---|
+| **Planning Agent** | Decomposes the objective into a staged pipeline; picks which specialists run and in what order; sets the target column & task type (regression / classification / descriptive) | The experiment plan (stage list with goals) |
+| **Data Exploration Agent** | EDA over schema + profile: distributions, correlations (SQL), missingness map, target balance | Exploration cells (SQL + findings) feeding later stages |
+| **Data Cleaning Agent** | Dedupe, null strategy, type casts, outlier filters — expressed as one SQL transformation | `<exp>_clean` dataset (materialized SQL) |
+| **Feature Engineering Agent** | Ratios, buckets, date parts, joins/aggregations over cleaned data | `<exp>_features` dataset + feature dictionary |
+| **Model Algorithm Agent** | Chooses model family from task type + data shape (rows, cardinality, linearity hints from EDA) | Train spec: {model_type, target, features} |
+| **Cross-Validation Agent** | k-fold CV over candidate specs (extends `ml.py` with `cross_validate`); flags overfitting via train/val gap | CV report per candidate |
+| **Test Agent** | Final holdout evaluation of the chosen model on untouched data | Test metrics + prediction sample dataset |
+| **Metric Performance Agent** | Interprets all metrics in business terms; compares candidates; recommends ship / iterate / abandon | The experiment report (markdown) |
+| **Programming Agent** | The shared "hands": turns every specialist's intent into concrete SQL / specs (specialists decide *what*, it writes *how*) | All SQL and spec artifacts |
+| **Code Review Agent** | Critic gate on every artifact *before execution*: SQL correctness vs. intent, leakage checks (target in features, post-outcome columns), spec sanity | Approve / revise verdicts (max 2 revision rounds) |
+
+Two structural agents (Planning, Code Review) wrap the specialist chain;
+the Programming Agent is the single writer so style and validation stay
+uniform. Every specialist→programmer→reviewer exchange is the
+`critic_review` flow; the Planning Agent's routing is the `delegator`
+flow.
+
+## Execution model
+
+An **Experiment** runs as a background job (the run-manager pattern:
+submit → poll/stream stage events), because a full pipeline takes
+minutes, not seconds:
+
+```
+objective ──▶ PLAN ──▶ EXPLORE ──▶ CLEAN ──▶ FEATURES ──▶ MODEL SELECT
+                                                        ──▶ CROSS-VALIDATE
+                                                        ──▶ TEST ──▶ REPORT
+```
+
+- Each stage: specialist proposes → Programming Agent drafts artifact →
+  Code Review Agent verdicts → (revise ≤2×) → platform executes/
+  materializes → stage recorded with its artifact, verdict trail, and
+  status. Failures stop the pipeline with everything up to that point
+  preserved and individually re-runnable.
+- **Human gates (optional per experiment)**: pause before materializing
+  the cleaned dataset and before training — reusing the existing
+  human-input machinery from workflows.
+- Artifacts land in existing stores: datasets (`<exp>_clean`,
+  `<exp>_features`, `<exp>_predictions`), the model registry, and the
+  experiment document itself (an `experiments` table beside `analyses`).
+- Reruns: an experiment replays its recorded artifacts against current
+  data (like Rerun-all for analyses) — retraining and re-evaluating
+  without re-planning, unless the user asks for a fresh plan.
+
+## Framework additions required (small)
+
+- `ml.py`: `cross_validate(spec, k)` via `sklearn.model_selection`
+  (cross_val_score / train-val gap), and metrics for candidate
+  comparison. Everything else — flows, HITL, datasets, models, file
+  store, run events — already exists.
+
+## API (v2)
+
+```
+POST /datascience/experiments {objective, source, target?, human_gates?}
+GET  /datascience/experiments            # list with stage progress
+GET  /datascience/experiments/{id}       # stages, artifacts, verdicts
+POST /datascience/experiments/{id}/resume     # answer a human gate
+POST /datascience/experiments/{id}/rerun
+DELETE /datascience/experiments/{id}
+```
+
+## UI (v2)
+
+Experiments tab beside Analyses: objective composer (+ source picker +
+optional target + gates toggle); a **pipeline timeline** showing each
+stage's status, artifact (SQL / spec / dataset link / metrics), and the
+reviewer's verdict; the final report rendered like an analysis; every
+produced dataset/model links into the catalog and Models rail.
+
+## v2 phasing
+
+| Phase | Contents |
+|---|---|
+| v2-P1 | Experiment store + background runner; Planning, Exploration, Cleaning, Programming, Code Review agents (through materialized clean dataset) |
+| v2-P2 | Feature Engineering, Model Algorithm, Cross-Validation (ml.py extension), Test, Metric Performance agents — full pipeline to report |
+| v2-P3 | Human gates, rerun/compare experiments, scheduled re-evaluation workflows |
