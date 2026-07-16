@@ -421,22 +421,63 @@ class WorkflowExecutor:
         return graph
 
     def _evaluate_condition(self, state: dict[str, Any], condition: str) -> bool:
-        """Evaluate a condition string.
+        """Evaluate an edge/decision condition string.
 
-        Args:
-            state: Current workflow state
-            condition: Condition expression
+        Supported forms, tried in order:
+          - ``not <expr>`` — negation of any supported form
+          - ``<left> contains <right>`` — substring test on stringified left
+          - ``<left> == <right>`` / ``<left> != <right>`` — loose equality
+          - bare key present in state — legacy behavior (always True)
+          - ``<dotted.path>`` — truthiness of the resolved value
 
-        Returns:
-            Boolean result
+        Operand tokens are quoted strings or numbers (literals), or dotted
+        paths resolved through the state and its ``node_results`` (so
+        ``qualify.output`` reaches that node's output). Conditions that
+        cannot be evaluated are False.
         """
-        # Simple condition evaluation (can be enhanced)
+        cond = (condition or "").strip()
+        if not cond:
+            return True
         try:
-            # For now, just check if condition key exists in state
-            return condition in state
+            if cond.startswith("not "):
+                return not self._evaluate_condition(state, cond[4:])
+            for op in (" contains ", " == ", " != "):
+                if op in cond:
+                    left_raw, right_raw = cond.split(op, 1)
+                    left = self._resolve_condition_token(state, left_raw.strip())
+                    right = self._resolve_condition_token(state, right_raw.strip())
+                    if op == " contains ":
+                        return right is not None and str(right) in str(left)
+                    equal = left == right or str(left) == str(right)
+                    return equal if op == " == " else not equal
+            if cond in state:
+                # Legacy semantics: a bare key that exists in state passes.
+                return True
+            return bool(self._resolve_condition_token(state, cond))
         except Exception as e:
-            logger.error(f"Error evaluating condition: {e}")
+            logger.error(f"Error evaluating condition {condition!r}: {e}")
             return False
+
+    @staticmethod
+    def _resolve_condition_token(state: dict[str, Any], token: str) -> Any:
+        """Resolve a condition operand: literal string/number or state path."""
+        if len(token) >= 2 and token[0] == token[-1] and token[0] in ("'", '"'):
+            return token[1:-1]
+        try:
+            return float(token) if "." in token else int(token)
+        except ValueError:
+            pass
+        for root in (state, state.get("node_results") or {}):
+            value: Any = root
+            for part in token.split("."):
+                if isinstance(value, dict) and part in value:
+                    value = value[part]
+                else:
+                    value = None
+                    break
+            if value is not None:
+                return value
+        return None
 
     async def execute(
         self,
