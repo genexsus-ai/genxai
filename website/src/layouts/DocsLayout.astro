@@ -4,24 +4,35 @@ import BaseLayout from './BaseLayout.astro';
 type NavItem = { label: string; href: string };
 
 type Props = {
-  title: string;
+  title?: string;
   description?: string;
   nav?: NavItem[];
+  frontmatter?: { title?: string; description?: string };
 };
 
-const {
-  title,
+// MDX pages using `layout:` pass their frontmatter as Astro.props.frontmatter,
+// not as top-level props — support both.
+const props = Astro.props;
+const title = props.title ?? props.frontmatter?.title ?? 'Docs';
+const description = props.description ?? props.frontmatter?.description;
+const nav = props.nav ?? [
+  { label: 'Docs Home', href: '/docs' },
+  { label: 'Getting Started', href: '/docs/getting-started' },
+  { label: 'Architecture', href: '/docs/concepts/architecture' },
+  { label: 'Flows', href: '/docs/concepts/flows' },
+];
+
+const schema = {
+  '@context': 'https://schema.org',
+  '@type': 'TechArticle',
+  headline: title,
   description,
-  nav = [
-    { label: 'Docs Home', href: '/docs' },
-    { label: 'Getting Started', href: '/docs/getting-started' },
-    { label: 'Architecture', href: '/docs/concepts/architecture' },
-    { label: 'Flows', href: '/docs/concepts/flows' },
-  ],
-} = Astro.props;
+  author: { '@type': 'Organization', name: 'GenXAI', url: 'https://genxai-framework.com' },
+  about: { '@type': 'SoftwareApplication', name: 'GenXAI' },
+};
 ---
 
-<BaseLayout title={title} description={description}>
+<BaseLayout title={title} description={description} schema={schema}>
   <div class="mx-auto max-w-6xl px-4 py-10 md:py-14">
     <div class="grid gap-8 md:grid-cols-[220px,1fr]">
       <aside class="md:sticky md:top-[76px] md:h-[calc(100vh-96px)] md:overflow-auto">

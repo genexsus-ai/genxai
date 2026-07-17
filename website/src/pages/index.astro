@@ -38,9 +38,24 @@ const featureBlocks = [
 ] as const;
 
 const exampleCode = `import os\nfrom genxai import Agent, AgentConfig, AgentRegistry, Graph\n\nos.environ["OPENAI_API_KEY"] = "sk-..."\n\nclassifier = Agent(\n    id="classifier",\n    config=AgentConfig(role="Classifier", goal="Categorize customer requests", llm_model="gpt-4"),\n)\n\nsupport = Agent(\n    id="support",\n    config=AgentConfig(role="Support Agent", goal="Resolve customer issues", llm_model="claude-3-opus", enable_memory=True),\n)\n\nAgentRegistry.register(classifier)\nAgentRegistry.register(support)\n\ngraph = Graph()\n# ... add nodes + edges ...\nresult = await graph.run(input_data="My app crashed")\n`;
+
+const schema = {
+  '@context': 'https://schema.org',
+  '@type': ['SoftwareApplication', 'SoftwareSourceCode'],
+  name: 'GenXAI',
+  description:
+    'Open-source (MIT) agentic AI framework for Python: graph-based multi-agent orchestration, 14 coordination flow patterns, multi-layer memory, 45 built-in tools, MCP client/server, connectors, triggers, and production runtime features.',
+  url: 'https://genxai-framework.com',
+  codeRepository: 'https://github.com/genexsus-ai/genxai-framework',
+  programmingLanguage: 'Python',
+  applicationCategory: 'DeveloperApplication',
+  operatingSystem: 'Cross-platform',
+  license: 'https://opensource.org/licenses/MIT',
+  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+};
 ---
 
-<BaseLayout>
+<BaseLayout schema={schema}>
   <Hero />
 
   <Section

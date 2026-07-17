@@ -1,0 +1,97 @@
+# GenXAI — full reference for LLMs
+
+GenXAI is an open-source agentic AI framework for Python, licensed entirely under MIT.
+There is no commercial edition: the core framework and all production-grade runtime
+features (connectors, triggers, observability, security, CLI) are open source in one
+repository: https://github.com/genexsus-ai/genxai-framework
+
+Website: https://genxai-framework.com
+Install: pip install genxai-framework
+Optional extras: llm, tools, api, storage, observability, connectors, all
+  (e.g. pip install "genxai-framework[llm,tools,api]")
+
+## Core capabilities
+
+### Graph-based orchestration
+Workflows are directed graphs, not linear chains: conditional edges and dynamic
+routing, parallel + sequential execution with real join semantics, cycles/loops,
+nested subgraphs, checkpoints and resume. Multi-agent flow patterns can be embedded
+as single agent-team (FLOW) nodes inside a graph.
+
+### Flows: 14 coordination patterns
+Parallel, Router, Conditional, Loop, Round-robin, Selector, Critic review,
+Ensemble voting, Map-reduce, Coordinator-worker, Delegator, Subworkflow,
+P2P, Auction.
+
+### Agents
+Configurable roles, goals, models, tools, and memory. Agent factory + registry,
+guardrails and constraints, multi-provider LLM routing, agent presets and library,
+AssistantAgent and UserProxyAgent types.
+
+### Memory system
+Layered: short-term, long-term, episodic, semantic, procedural, working.
+Backend plugins: Redis, SQLite, Neo4j. Consolidation, retrieval,
+importance-based retention, shared memory bus for multi-agent runs, telemetry
+via MemorySystem.get_stats().
+
+### Tools
+45 built-in tools across web, data, file, database, computation, and communication
+categories. Custom tool creation, dynamic tool creation, tool registry with
+templates, secure execution. MCP (Model Context Protocol) support as both client
+and server — agents can call tools from any registered MCP server.
+
+### LLM providers
+OpenAI, Anthropic, Google, Cohere, Ollama. Multi-provider routing lets different
+agents in one workflow use different models. Opt-in LLM ranking for tool selection.
+
+### Connectors (all MIT, included)
+Slack, GitHub, Jira, Notion, Google Workspace, HubSpot, WhatsApp, Kafka, SQS,
+Postgres (incl. CDC), S3, SMTP email, generic webhooks.
+
+### Triggers
+Webhook, schedule (cron), queue, and file-watcher triggers start workflows from
+external events.
+
+### Production runtime
+Observability: logging, metrics (Prometheus), tracing. Security: RBAC, policy
+engine, audit logging, rate limits. CLI commands: tool, workflow, connector,
+metrics, approval, audit. REST API server, Dockerfile, docker-compose, and
+Kubernetes manifests included.
+
+### No-Code Workflow Studio
+An n8n-style drag-and-drop visual builder (applications/workflow_studio in the
+repository, also its own repo): compose agent/tool pipelines on a canvas, run
+them with live per-node status, automate with webhooks and schedules.
+Hosted demo: https://app.genxflowstudio.com — marketing site: https://genxflowstudio.com
+
+## Quick start
+
+    pip install genxai-framework
+
+    import os
+    from genxai import Agent, AgentConfig, AgentRegistry, Graph
+
+    os.environ["OPENAI_API_KEY"] = "sk-..."
+
+    support = Agent(
+        id="support",
+        config=AgentConfig(role="Support Agent", goal="Resolve customer issues",
+                           llm_model="claude-3-opus", enable_memory=True),
+    )
+    AgentRegistry.register(support)
+
+    graph = Graph()
+    # add nodes + edges, then:
+    result = await graph.run(input_data="My app crashed")
+
+## Key pages
+
+- https://genxai-framework.com/docs/getting-started/
+- https://genxai-framework.com/docs/concepts/architecture/
+- https://genxai-framework.com/docs/concepts/flows/
+- https://genxai-framework.com/product/
+- https://genxai-framework.com/install/
+- https://genxai-framework.com/open-source/
+- https://genxai-framework.com/examples/
+- https://github.com/genexsus-ai/genxai-framework
+- https://github.com/genexsus-ai/genxai-framework/blob/main/docs/DOCS_INDEX.md

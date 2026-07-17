@@ -1,0 +1,27 @@
+# GenXAI
+
+> GenXAI is an open-source (MIT-licensed) agentic AI framework for Python. It provides graph-based multi-agent orchestration, 14 drop-in coordination flow patterns, multi-layer memory (short/long-term, episodic, semantic, procedural, working), 45 built-in tools, MCP client and server support, ready-made connectors (Slack, GitHub, Jira, Notion, Google Workspace, HubSpot, WhatsApp, Kafka, SQS, Postgres CDC, S3, SMTP, webhooks), event triggers, and production runtime features (observability, RBAC/security, CLI, REST API, Docker/Kubernetes). Install with `pip install genxai-framework`. Everything ships under the MIT license — there is no commercial edition.
+
+## Docs
+
+- [Getting Started](https://genxai-framework.com/docs/getting-started/): install GenXAI and run a first graph workflow
+- [Architecture](https://genxai-framework.com/docs/concepts/architecture/): layered architecture — orchestration, agents, memory, tools, infrastructure
+- [Flows](https://genxai-framework.com/docs/concepts/flows/): the 14 multi-agent coordination patterns (parallel, router, critic review, map-reduce, ensemble voting, coordinator-worker, and more)
+- [Product overview](https://genxai-framework.com/product/): full capability list — graph engine, LLM providers, connectors, triggers, Workflow Studio
+- [Installation](https://genxai-framework.com/install/): PyPI install and optional extras (llm, tools, api, storage, observability, connectors, all)
+- [Open source](https://genxai-framework.com/open-source/): licensing — the entire framework, including production features, is MIT
+- [Examples](https://genxai-framework.com/examples/): curated runnable examples
+
+## Source
+
+- [GitHub repository](https://github.com/genexsus-ai/genxai-framework): full source code, tests, and in-repo documentation
+- [In-repo docs index](https://github.com/genexsus-ai/genxai-framework/blob/main/docs/DOCS_INDEX.md): complete documentation set
+- [PyPI package](https://pypi.org/project/genxai-framework/): genxai-framework
+
+## Related
+
+- [GenXAI Flow Studio](https://genxflowstudio.com/): no-code drag-and-drop visual workflow builder built on GenXAI
+
+## Optional
+
+- [Full site summary for LLMs](https://genxai-framework.com/llms-full.txt): expanded factual reference
