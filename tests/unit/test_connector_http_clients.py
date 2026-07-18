@@ -45,6 +45,17 @@ class FakeClient:
         )
         return FakeResponse(self.responses.get(("POST", path), {}))
 
+    async def put(
+        self,
+        path: str,
+        json: Optional[Dict[str, Any]] = None,
+        params: Optional[Dict[str, Any]] = None,
+    ) -> FakeResponse:
+        self.requests.append(
+            {"method": "PUT", "path": path, "params": params or {}, "json": json or {}}
+        )
+        return FakeResponse(self.responses.get(("PUT", path), {}))
+
     async def aclose(self) -> None:
         self.closed = True
 
@@ -165,6 +176,56 @@ async def test_google_workspace_connector(monkeypatch: pytest.MonkeyPatch) -> No
     assert files["files"] == []
     events = await connector.get_calendar_events()
     assert events["items"] == []
+
+
+@pytest.mark.asyncio
+async def test_google_workspace_sheet_upsert(monkeypatch: pytest.MonkeyPatch) -> None:
+    sheet_rows = {
+        "values": [
+            ["Name", "Email"],
+            ["Jono", "jono@example.com"],
+            ["Ana", "ana@example.com"],
+        ]
+    }
+    responses = {
+        ("GET", "/sheets/v4/spreadsheets/s1/values/Sheet1"): sheet_rows,
+        ("PUT", "/sheets/v4/spreadsheets/s1/values/Sheet1!A3"): {"updatedRows": 1},
+        ("POST", "/sheets/v4/spreadsheets/s1/values/Sheet1!A1:append"): {"updates": {}},
+        ("PUT", "/sheets/v4/spreadsheets/s1/values/Sheet1!A2:B2"): {"updatedRows": 1},
+    }
+    fake_client = FakeClient(responses)
+    _patch_async_client(monkeypatch, "genxai.connectors.google_workspace", fake_client)
+
+    connector = GoogleWorkspaceConnector(connector_id="gws", access_token="token")
+    await connector.start()
+
+    # Key matched by header name -> row updated in place
+    updated = await connector.upsert_sheet_row(
+        "s1", "Sheet1", "Email", "ana@example.com", ["Ana Maria", "ana@example.com"]
+    )
+    assert updated["action"] == "updated" and updated["row"] == 3
+
+    # Key matched by column letter works too
+    by_letter = await connector.upsert_sheet_row(
+        "s1", "Sheet1", "B", "ana@example.com", ["Ana Maria", "ana@example.com"]
+    )
+    assert by_letter["action"] == "updated" and by_letter["row"] == 3
+
+    # No match -> appended
+    appended = await connector.upsert_sheet_row(
+        "s1", "Sheet1", "Email", "new@example.com", [["New", "new@example.com"]]
+    )
+    assert appended["action"] == "appended"
+
+    # Unknown header raises a clear error
+    with pytest.raises(ValueError):
+        await connector.upsert_sheet_row("s1", "Sheet1", "Phone", "x", ["a"])
+
+    # Plain range update
+    update = await connector.update_sheet_values("s1", "Sheet1!A2:B2", [["Jo", "jo@x.com"]])
+    assert update["updatedRows"] == 1
+    put_request = next(r for r in fake_client.requests if r["method"] == "PUT")
+    assert put_request["params"]["valueInputOption"] == "USER_ENTERED"
 
 
 @pytest.mark.asyncio
