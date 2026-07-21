@@ -396,3 +396,72 @@ async def test_data_filter_single_object_and_bad_input():
     assert one.data["kept"] == 1
     bad = await tool.execute(items="not a list", operator="is_not_empty")
     assert bad.data["success"] is False
+
+
+# ==================== Set Fields Tool Tests ====================
+
+from genxai.tools.builtin.data.data_set_fields import SetFieldsTool
+
+
+@pytest.mark.asyncio
+async def test_set_fields_keep_only_set():
+    tool = SetFieldsTool()
+    result = await tool.execute(
+        fields={"name": "Ana", "greeting": "Hi Ana"},
+        base={"name": "old", "junk": 1},
+        keep_only_set=True,
+    )
+    assert result.success is True
+    assert result.data["result"] == {"name": "Ana", "greeting": "Hi Ana"}
+
+
+@pytest.mark.asyncio
+async def test_set_fields_merge_with_base():
+    tool = SetFieldsTool()
+    result = await tool.execute(
+        fields={"greeting": "Hi"},
+        base={"name": "Ana", "email": "a@x.com"},
+        keep_only_set=False,
+    )
+    assert result.data["result"] == {"name": "Ana", "email": "a@x.com", "greeting": "Hi"}
+
+
+@pytest.mark.asyncio
+async def test_set_fields_bad_input():
+    tool = SetFieldsTool()
+    result = await tool.execute(fields="not an object")
+    assert result.data["success"] is False
+
+
+# ==================== Date/Time Tool Tests ====================
+
+from genxai.tools.builtin.data.date_time import DateTimeTool
+
+
+@pytest.mark.asyncio
+async def test_datetime_format_presets():
+    tool = DateTimeTool()
+    r = await tool.execute(operation="format", value="2026-07-21T02:43:53+00:00", format="date")
+    assert r.data["result"] == "2026-07-21"
+    r2 = await tool.execute(operation="format", value="2026-07-21", format="us")
+    assert r2.data["result"] == "07/21/2026"
+    r3 = await tool.execute(operation="format", value="2026-07-21", format="human")
+    assert "2026" in r3.data["result"] and "July" in r3.data["result"]
+
+
+@pytest.mark.asyncio
+async def test_datetime_add_and_diff():
+    tool = DateTimeTool()
+    added = await tool.execute(operation="add", value="2026-07-21", amount=3, unit="days", format="date")
+    assert added.data["result"] == "2026-07-24"
+    diff = await tool.execute(operation="diff", value="2026-07-21", to="2026-07-24")
+    assert diff.data["days"] == 3.0
+
+
+@pytest.mark.asyncio
+async def test_datetime_now_and_bad_input():
+    tool = DateTimeTool()
+    now = await tool.execute(operation="now", format="iso")
+    assert now.success is True and "T" in now.data["result"]
+    bad = await tool.execute(operation="format", value="not a date")
+    assert bad.data["success"] is False
