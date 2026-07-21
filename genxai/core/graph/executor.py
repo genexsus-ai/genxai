@@ -41,6 +41,18 @@ from genxai.utils.runtime_services import (
 logger = logging.getLogger(__name__)
 
 
+def _as_number(value: Any) -> float | None:
+    """Coerce a value to float for numeric comparison, or None if not numeric."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        return float(str(value).strip())
+    except (ValueError, TypeError):
+        return None
+
+
 class EnhancedGraph(Graph):
     """Enhanced graph with agent execution support.
     
@@ -426,6 +438,7 @@ class WorkflowExecutor:
         Supported forms, tried in order:
           - ``not <expr>`` — negation of any supported form
           - ``<left> contains <right>`` — substring test on stringified left
+          - ``<left> >= <right>`` / ``<= `` / ``> `` / ``< `` — numeric compare
           - ``<left> == <right>`` / ``<left> != <right>`` — loose equality
           - bare key present in state — legacy behavior (always True)
           - ``<dotted.path>`` — truthiness of the resolved value
@@ -441,15 +454,30 @@ class WorkflowExecutor:
         try:
             if cond.startswith("not "):
                 return not self._evaluate_condition(state, cond[4:])
-            for op in (" contains ", " == ", " != "):
+            # Order matters: multi-char operators (>=, <=) before their prefixes.
+            for op in (" contains ", " >= ", " <= ", " > ", " < ", " == ", " != "):
                 if op in cond:
                     left_raw, right_raw = cond.split(op, 1)
                     left = self._resolve_condition_token(state, left_raw.strip())
                     right = self._resolve_condition_token(state, right_raw.strip())
                     if op == " contains ":
                         return right is not None and str(right) in str(left)
-                    equal = left == right or str(left) == str(right)
-                    return equal if op == " == " else not equal
+                    if op in (" == ", " != "):
+                        equal = left == right or str(left) == str(right)
+                        return equal if op == " == " else not equal
+                    # Relational: compare numerically, else lexicographically.
+                    ln, rn = _as_number(left), _as_number(right)
+                    if ln is not None and rn is not None:
+                        left_cmp, right_cmp = ln, rn
+                    else:
+                        left_cmp, right_cmp = str(left), str(right)
+                    if op == " >= ":
+                        return left_cmp >= right_cmp
+                    if op == " <= ":
+                        return left_cmp <= right_cmp
+                    if op == " > ":
+                        return left_cmp > right_cmp
+                    return left_cmp < right_cmp
             if cond in state:
                 # Legacy semantics: a bare key that exists in state passes.
                 return True

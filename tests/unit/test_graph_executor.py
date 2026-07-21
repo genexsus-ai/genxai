@@ -158,11 +158,33 @@ def test_evaluate_condition_true():
 def test_evaluate_condition_false():
     """Test evaluating a false condition."""
     executor = WorkflowExecutor(register_builtin_tools=False)
-    
+
     state = {"some_key": "value"}
     result = executor._evaluate_condition(state, "missing_key")
-    
+
     assert result is False
+
+
+def test_evaluate_condition_relational_operators():
+    """Relational operators compare numerically, with string coercion."""
+    executor = WorkflowExecutor(register_builtin_tools=False)
+    state = {"age": 30, "score": "18", "name": "Ana"}
+
+    # numeric comparison, values pulled from state
+    assert executor._evaluate_condition(state, "age > 18") is True
+    assert executor._evaluate_condition(state, "age < 18") is False
+    assert executor._evaluate_condition(state, "age >= 30") is True
+    assert executor._evaluate_condition(state, "age <= 29") is False
+    # stringy numbers coerce (e.g. form input)
+    assert executor._evaluate_condition(state, "score >= 18") is True
+    assert executor._evaluate_condition(state, "score > 20") is False
+    # >= and <= are matched before > and < (operator ordering)
+    assert executor._evaluate_condition(state, "age >= 30") is True
+    # non-numeric falls back to lexicographic
+    assert executor._evaluate_condition(state, "name > 'Al'") is True
+    # existing operators still work (string literals are quoted)
+    assert executor._evaluate_condition(state, "name == 'Ana'") is True
+    assert executor._evaluate_condition(state, "not age < 18") is True
 
 
 @pytest.mark.asyncio
